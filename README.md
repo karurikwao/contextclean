@@ -44,12 +44,8 @@ ContextClean gives you a deterministic local first pass:
 
 ## Install
 
-Download a release binary:
-
-```bash
-# Linux x64, macOS Intel, macOS Apple Silicon, and Windows x64 archives are attached.
-open https://github.com/karurikwao/contextclean/releases/tag/v0.1.0
-```
+Download a release binary from [GitHub Releases](https://github.com/karurikwao/contextclean/releases/tag/v0.1.0).
+Linux x64, macOS Intel, macOS Apple Silicon, and Windows x64 archives are attached.
 
 Install from Git with Rust 1.85 or newer:
 
