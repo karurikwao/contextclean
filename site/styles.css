@@ -157,43 +157,48 @@ h3 {
   color: var(--ink);
 }
 
-.terminal-visual {
-  background:
-    radial-gradient(circle at top right, rgba(200, 148, 47, 0.25), transparent 34%),
-    var(--code);
+.launch-links {
+  align-items: center;
+  color: var(--blue);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.98rem;
+  gap: 7px;
+  margin-top: 18px;
+}
+
+.launch-links a {
+  color: var(--blue);
+}
+
+.launch-links span {
+  color: var(--muted);
+}
+
+.demo-gif {
+  background: var(--code);
   border: 1px solid #263432;
   border-radius: 8px;
-  box-shadow: 0 24px 80px rgba(23, 33, 31, 0.22);
-  color: #d9f4e8;
+  box-shadow: 0 24px 80px rgba(23, 33, 31, 0.2);
+  margin: 0;
   overflow: hidden;
 }
 
-.terminal-bar {
-  align-items: center;
-  background: #182321;
-  display: flex;
-  gap: 8px;
-  height: 42px;
-  padding: 0 16px;
-}
-
-.terminal-bar span {
-  border-radius: 50%;
+.demo-gif img {
+  aspect-ratio: 16 / 9;
   display: block;
-  height: 11px;
-  width: 11px;
+  height: auto;
+  width: 100%;
 }
 
-.terminal-bar span:nth-child(1) {
-  background: #e36d55;
+.hero-demo {
+  align-self: center;
 }
 
-.terminal-bar span:nth-child(2) {
-  background: var(--gold);
-}
-
-.terminal-bar span:nth-child(3) {
-  background: #4cae74;
+.demo-gif-inline {
+  box-shadow: 0 18px 54px rgba(23, 33, 31, 0.14);
+  margin-top: 34px;
+  max-width: 960px;
 }
 
 pre {
@@ -206,7 +211,6 @@ code {
   font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
 }
 
-.terminal-visual pre,
 .install {
   font-size: 0.94rem;
   line-height: 1.65;
@@ -356,6 +360,10 @@ footer {
   .hero {
     min-height: auto;
     padding-top: 54px;
+  }
+
+  .launch-links {
+    font-size: 0.95rem;
   }
 
   footer {

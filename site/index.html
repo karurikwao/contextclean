@@ -29,40 +29,33 @@
       <section class="hero">
         <div class="hero-copy">
           <p class="eyebrow">Local-first context cleaner for AI agents</p>
-          <h1>Stop paying LLMs to read raw HTML, repeated logs, and secret-shaped noise.</h1>
+          <h1>ContextClean</h1>
           <p class="lede">
-            ContextClean turns noisy files, web exports, terminal output, and project folders into
-            compact, reviewable, token-budgeted context packs with reports that explain the savings.
+            Stop paying LLMs to read raw HTML, repeated logs, and secret-shaped noise. ContextClean
+            turns noisy files, web exports, terminal output, and project folders into compact,
+            reviewable, token-budgeted context packs with reports that explain the savings.
           </p>
           <div class="actions" aria-label="Primary actions">
-            <a class="button primary" href="#install">Install from source</a>
-            <a class="button secondary" href="#demo">See the output</a>
+            <a class="button primary" href="https://github.com/karurikwao/contextclean/releases/tag/v0.1.0">Download v0.1.0</a>
+            <a class="button secondary" href="#demo">See live demo</a>
+          </div>
+          <div class="launch-links" aria-label="Project links">
+            <a href="#demo">Live demo</a>
+            <span aria-hidden="true">|</span>
+            <a href="https://contextclean.pages.dev/">Launch page</a>
+            <span aria-hidden="true">|</span>
+            <a href="https://github.com/karurikwao/contextclean">GitHub repo</a>
           </div>
         </div>
 
-        <div class="terminal-visual" aria-label="Terminal demo preview">
-          <div class="terminal-bar">
-            <span></span>
-            <span></span>
-            <span></span>
-          </div>
-          <pre><code>$ ctxclean report benchmarks/fixtures/github_actions_failure_large.log \
-  --mode aggressive --max-tokens 3200 --format text
-
-ContextClean Report
-input_tokens:      75,768
-output_tokens:      3,200
-tokens_saved:      72,568
-reduction_percent:  95.8%
-
-biggest_noise_sources:
-- log_noise: 31,692 tokens
-- repetition: 12,586 tokens
-- stack_trace: 3,620 tokens
-
-recommended_command:
-ctxclean ... --mode aggressive --max-tokens 3200</code></pre>
-        </div>
+        <figure class="demo-gif hero-demo">
+          <img
+            src="./assets/contextclean-demo.gif"
+            width="960"
+            height="540"
+            alt="Animated terminal demo showing ContextClean cleaning a failed CI log, preserving the unique failure, and reducing 75,768 tokens to 3,200 tokens."
+          />
+        </figure>
       </section>
 
       <section id="proof" class="proof">
@@ -113,6 +106,14 @@ ctxclean ... --mode aggressive --max-tokens 3200</code></pre>
           <p class="eyebrow">Fixture-backed excerpts</p>
           <h2>From noisy HTML and logs to model-ready context</h2>
         </div>
+        <figure class="demo-gif demo-gif-inline">
+          <img
+            src="./assets/contextclean-demo.gif"
+            width="960"
+            height="540"
+            alt="Looping ContextClean terminal workflow showing log cleanup and token savings."
+          />
+        </figure>
         <div class="comparison">
           <article>
             <h3>HTML Before</h3>
@@ -213,9 +214,11 @@ Reduction: 28.9%</code></pre>
           <p class="eyebrow">Run locally</p>
           <h2>No API keys. No telemetry. No cloud dependency.</h2>
         </div>
-        <pre class="install"><code>git clone https://github.com/karurikwao/contextclean.git
-cd contextclean
-cargo install --path crates/contextclean-cli
+        <pre class="install"><code># Download binaries:
+https://github.com/karurikwao/contextclean/releases/tag/v0.1.0
+
+# Or install from Git with Rust 1.85+:
+cargo install --git https://github.com/karurikwao/contextclean contextclean-cli
 
 ctxclean gha build.log --max-tokens 3200 --format markdown
 ctxclean repo . --fit gpt-4.1 --output context.md
