@@ -44,18 +44,25 @@ ContextClean gives you a deterministic local first pass:
 
 ## Install
 
-Rust 1.85 or newer is required.
+Download a release binary:
+
+```bash
+# Linux x64, macOS Intel, macOS Apple Silicon, and Windows x64 archives are attached.
+open https://github.com/karurikwao/contextclean/releases/tag/v0.1.0
+```
+
+Install from Git with Rust 1.85 or newer:
+
+```bash
+cargo install --git https://github.com/karurikwao/contextclean contextclean-cli
+```
+
+Install from a local checkout:
 
 ```bash
 git clone https://github.com/karurikwao/contextclean.git
 cd contextclean
 cargo install --path crates/contextclean-cli
-```
-
-Run without installing:
-
-```bash
-cargo run -p contextclean-cli -- fixtures/dirty_html_small.html --format json
 ```
 
 No host Rust yet, but Docker is available:
@@ -64,7 +71,7 @@ No host Rust yet, but Docker is available:
 docker run --rm -v "${PWD}:/work" -w /work -e CARGO_TARGET_DIR=/tmp/contextclean-target rust:1.85-bookworm sh -lc 'export PATH=/usr/local/cargo/bin:$PATH; cargo test --workspace --all-features --locked'
 ```
 
-Release binaries and crates.io publishing are prepared for `v0.1.0`; see `docs/RELEASE_CHECKLIST.md`.
+crates.io publishing is prepared for `v0.1.0`; see `docs/RELEASE_CHECKLIST.md`.
 
 ## Quick Start
 
