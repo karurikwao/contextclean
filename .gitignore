@@ -31,3 +31,4 @@ coverage/
 # Fixture exceptions may contain fake secret-shaped examples only.
 !fixtures/**/*.env.example
 !fixtures/**/*.log
+!benchmarks/fixtures/**/*.log

@@ -1,0 +1,27 @@
+name: ContextClean failed-log example
+
+on:
+  workflow_dispatch:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.85.0
+      - name: Run tests and capture log
+        shell: bash
+        run: |
+          set +e
+          cargo test --workspace --all-features --locked 2>&1 | tee failed-log.txt
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            cargo run -p contextclean-cli -- gha failed-log.txt --max-tokens 8000 --format markdown --output ctxclean-failure.md --force
+          fi
+          exit "$status"
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: ctxclean-failure-context
+          path: ctxclean-failure.md

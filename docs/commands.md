@@ -1,10 +1,14 @@
 # Commands
 
-The CLI exposes the default cleaning command plus a report subcommand:
+The CLI exposes the default cleaning command, workflow-specific aliases, report mode, MCP server mode, and the `ctxrun` failure wrapper:
 
 ```bash
 ctxclean [OPTIONS] [INPUT]
+ctxclean gha [OPTIONS] <INPUT>
+ctxclean repo [OPTIONS] <INPUT>
 ctxclean report [OPTIONS] <INPUT>
+ctxclean mcp
+ctxrun [OPTIONS] <COMMAND> [ARGS]...
 ```
 
 ## Inputs
@@ -65,6 +69,60 @@ Reports include:
 - removed section summary
 - recommended cleanup command
 - warnings from repo scanning or redaction
+
+## GitHub Actions Logs
+
+`ctxclean gha <INPUT>` is a log-focused alias for GitHub Actions and similar CI output.
+
+```bash
+ctxclean gha failed-log.txt --max-tokens 8000 --format markdown
+ctxclean gha - --format text
+```
+
+It defaults to `aggressive` mode so install/build chatter, repeated retries, and duplicate stack frames are collapsed while failed test names, unique errors, and final summaries are preserved.
+
+## Repository Context
+
+`ctxclean repo <PATH>` is an explicit repo/project packer.
+
+```bash
+ctxclean repo . --max-tokens 12000 --format markdown
+ctxclean repo ./crates/contextclean-core --format json
+```
+
+It reuses the same directory reader as the default command: `.gitignore`, global git excludes, `.ctxcleanignore`, generated-directory skips, sensitive-path warnings, and default redaction all apply.
+
+## MCP Server Mode
+
+`ctxclean mcp` starts a stdio JSON-RPC MCP server. Stdout contains protocol messages only.
+
+Supported methods:
+
+- `initialize`
+- `notifications/initialized`
+- `ping`
+- `tools/list`
+- `tools/call`
+- `shutdown`
+
+Tools:
+
+- `contextclean_clean`
+- `contextclean_report`
+
+Tool arguments accept `text` or `path`, plus `mode`, `format`, `maxTokens`, `fit`, `stripComments`, `redactSecrets`, and `includeSensitive`.
+
+## ctxrun
+
+`ctxrun` executes a command locally. Successful commands pass stdout/stderr through unchanged. Failed commands are cleaned with ContextClean, printed to stdout, and the process exits with the child command's exit code.
+
+```bash
+ctxrun --max-tokens 8000 npm test
+ctxrun --format markdown pytest
+ctxrun --max-tokens 6000 cargo test -p contextclean-core
+```
+
+`ctxrun` options apply only to cleaned failure output; success output is not redacted or rewritten.
 
 ## Safety Flags
 

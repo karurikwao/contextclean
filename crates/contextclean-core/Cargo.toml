@@ -10,6 +10,7 @@ documentation.workspace = true
 description = "Core cleaning and reporting engine for ContextClean."
 keywords.workspace = true
 categories.workspace = true
+readme = "README.md"
 
 [dependencies]
 ignore.workspace = true

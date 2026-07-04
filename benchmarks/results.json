@@ -1,0 +1,180 @@
+{
+    "generated_at":  "2026-07-04T17:28:01Z",
+    "tokenizer":  "o200k_base",
+    "binary":  "target/release/ctxclean",
+    "results":  [
+                    {
+                        "name":  "HTML scrape",
+                        "fixture":  "benchmarks/fixtures/html_scrape_large.html",
+                        "command":  "ctxclean benchmarks/fixtures/html_scrape_large.html --mode standard --max-tokens 5900 --format json --quiet",
+                        "input_tokens":  70571,
+                        "output_tokens":  5874,
+                        "tokens_saved":  64697,
+                        "reduction_percent":  91.6764676708563,
+                        "removed_section_kinds":  [
+                                                      "html_boilerplate",
+                                                      "html_execution_block",
+                                                      "truncated"
+                                                  ],
+                        "warnings":  [
+
+                                     ],
+                        "truncation_applied":  true,
+                        "recommended_command":  "ctxclean benchmarks/fixtures/html_scrape_large.html --mode standard --max-tokens 5900",
+                        "checks":  [
+                                       {
+                                           "type":  "must_contain",
+                                           "value":  "KEEP_HTML_ROOT_CAUSE",
+                                           "passed":  true
+                                       },
+                                       {
+                                           "type":  "must_contain",
+                                           "value":  "Configuration table",
+                                           "passed":  true
+                                       },
+                                       {
+                                           "type":  "must_contain",
+                                           "value":  "KEEP_CODE_BLOCK",
+                                           "passed":  true
+                                       },
+                                       {
+                                           "type":  "must_not_contain",
+                                           "value":  "window.analyticsQueue",
+                                           "passed":  true
+                                       },
+                                       {
+                                           "type":  "must_not_contain",
+                                           "value":  "Advertisement slot",
+                                           "passed":  true
+                                       },
+                                       {
+                                           "type":  "must_not_contain",
+                                           "value":  "Accept all cookies",
+                                           "passed":  true
+                                       }
+                                   ]
+                    },
+                    {
+                        "name":  "CI failure log",
+                        "fixture":  "benchmarks/fixtures/github_actions_failure_large.log",
+                        "command":  "ctxclean benchmarks/fixtures/github_actions_failure_large.log --mode aggressive --max-tokens 3200 --format json --quiet",
+                        "input_tokens":  75768,
+                        "output_tokens":  3200,
+                        "tokens_saved":  72568,
+                        "reduction_percent":  95.7765811424348,
+                        "removed_section_kinds":  [
+                                                      "duplicate_line",
+                                                      "log_noise",
+                                                      "stack_frame",
+                                                      "truncated"
+                                                  ],
+                        "warnings":  [
+
+                                     ],
+                        "truncation_applied":  true,
+                        "recommended_command":  "ctxclean gha benchmarks/fixtures/github_actions_failure_large.log --max-tokens 3200 --format markdown",
+                        "checks":  [
+                                       {
+                                           "type":  "must_contain",
+                                           "value":  "FAIL packages/api/user.test.ts",
+                                           "passed":  true
+                                       },
+                                       {
+                                           "type":  "must_contain",
+                                           "value":  "Unique failure:",
+                                           "passed":  true
+                                       },
+                                       {
+                                           "type":  "must_contain",
+                                           "value":  "Final error summary",
+                                           "passed":  true
+                                       },
+                                       {
+                                           "type":  "must_not_contain",
+                                           "value":  "added 481 packages",
+                                           "passed":  true
+                                       },
+                                       {
+                                           "type":  "must_not_contain",
+                                           "value":  "found 0 vulnerabilities",
+                                           "passed":  true
+                                       }
+                                   ]
+                    },
+                    {
+                        "name":  "Stack trace dump",
+                        "fixture":  "benchmarks/fixtures/stack_trace_dump_large.log",
+                        "command":  "ctxclean benchmarks/fixtures/stack_trace_dump_large.log --mode standard --max-tokens 1850 --format json --quiet",
+                        "input_tokens":  28189,
+                        "output_tokens":  1850,
+                        "tokens_saved":  26339,
+                        "reduction_percent":  93.437156337578486,
+                        "removed_section_kinds":  [
+                                                      "stack_frame",
+                                                      "truncated"
+                                                  ],
+                        "warnings":  [
+
+                                     ],
+                        "truncation_applied":  true,
+                        "recommended_command":  "ctxclean benchmarks/fixtures/stack_trace_dump_large.log --mode standard --max-tokens 1850",
+                        "checks":  [
+                                       {
+                                           "type":  "must_contain",
+                                           "value":  "KEEP_STACK_ROOT",
+                                           "passed":  true
+                                       },
+                                       {
+                                           "type":  "must_contain",
+                                           "value":  "UNIQUE_DATABASE_CONSTRAINT",
+                                           "passed":  true
+                                       },
+                                       {
+                                           "type":  "must_contain",
+                                           "value":  "Collapsed stack frames",
+                                           "passed":  true
+                                       }
+                                   ]
+                    },
+                    {
+                        "name":  "Small dirty HTML",
+                        "fixture":  "fixtures/dirty_html_article.html",
+                        "command":  "ctxclean fixtures/dirty_html_article.html --mode standard --format json --quiet",
+                        "input_tokens":  371,
+                        "output_tokens":  105,
+                        "tokens_saved":  266,
+                        "reduction_percent":  71.698113207547181,
+                        "removed_section_kinds":  [
+                                                      "html_boilerplate",
+                                                      "html_execution_block"
+                                                  ],
+                        "warnings":  [
+
+                                     ],
+                        "truncation_applied":  false,
+                        "recommended_command":  "ctxclean fixtures/dirty_html_article.html --mode standard",
+                        "checks":  [
+                                       {
+                                           "type":  "must_contain",
+                                           "value":  "API Setup \u0026 Troubleshooting",
+                                           "passed":  true
+                                       },
+                                       {
+                                           "type":  "must_contain",
+                                           "value":  "Unique visible conclusion",
+                                           "passed":  true
+                                       },
+                                       {
+                                           "type":  "must_not_contain",
+                                           "value":  "window.analytics",
+                                           "passed":  true
+                                       },
+                                       {
+                                           "type":  "must_not_contain",
+                                           "value":  "Accept all cookies",
+                                           "passed":  true
+                                       }
+                                   ]
+                    }
+                ]
+}

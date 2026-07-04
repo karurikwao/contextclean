@@ -215,6 +215,7 @@ code {
 
 .band,
 .features,
+.proof,
 .trust {
   padding: 88px clamp(24px, 6vw, 96px);
 }
@@ -227,6 +228,11 @@ code {
 
 .section-heading {
   max-width: 820px;
+}
+
+.section-copy {
+  color: var(--muted);
+  max-width: 680px;
 }
 
 .comparison {
@@ -261,6 +267,43 @@ code {
 .feature-grid p,
 .trust li {
   color: var(--muted);
+}
+
+.metric-table {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-top: 32px;
+  overflow-x: auto;
+}
+
+.metric-table table {
+  background: var(--panel);
+  border-collapse: collapse;
+  min-width: 680px;
+  width: 100%;
+}
+
+.metric-table th,
+.metric-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 16px 18px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.metric-table th:first-child,
+.metric-table td:first-child {
+  text-align: left;
+}
+
+.metric-table th {
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+}
+
+.metric-table tr:last-child td {
+  border-bottom: 0;
 }
 
 .trust {

@@ -17,6 +17,8 @@ crates/
 5. Apply exact token budget if requested.
 6. Render text, Markdown, or JSON.
 7. For `ctxclean report`, project the clean result into report metrics instead of rendering cleaned content.
+8. For `ctxclean mcp`, expose clean/report through stdio JSON-RPC without human logs on stdout.
+9. For `ctxrun`, pass successful child output through unchanged and clean failed output through the same core pipeline.
 
 ## Current Implementation Boundaries
 
@@ -26,6 +28,9 @@ crates/
 - Log crushing is deterministic: safe install noise removal, duplicate frame collapse, and repeated-line grouping.
 - Directory traversal uses the `ignore` crate to respect `.gitignore` and `.ctxcleanignore`.
 - Sensitive path scanning is explicit opt-in with `--include-sensitive`; redaction stays enabled by default.
+- `ctxclean gha` and `ctxclean repo` are CLI aliases over the same safe source reader and cleaner.
+- `ctxclean mcp` is stdio-only and exposes read-only clean/report tools.
+- `ctxrun` is a second binary in the CLI crate for failed command output.
 - No network calls, telemetry, remote storage, or model API calls exist in the V1 foundation.
 
 ## Future Architecture
@@ -34,5 +39,5 @@ Later phases should add:
 
 - parser-backed HTML/Markdown cleaning for malformed/nested pages
 - provider-specific CI log distillers
-- MCP server mode
+- streaming and timeout-aware `ctxrun` capture
 - language-aware code compression behind explicit flags

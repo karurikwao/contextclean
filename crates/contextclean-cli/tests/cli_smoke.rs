@@ -12,6 +12,28 @@ fn fixture_path(name: &str) -> PathBuf {
         .join(name)
 }
 
+fn test_script(name: &str, body: &str) -> (tempfile::TempDir, PathBuf) {
+    let temp = tempdir().unwrap();
+    let extension = if cfg!(windows) { "cmd" } else { "sh" };
+    let path = temp.path().join(format!("{name}.{extension}"));
+    let content = if cfg!(windows) {
+        format!("@echo off\r\n{body}\r\n")
+    } else {
+        format!("#!/bin/sh\n{body}\n")
+    };
+    fs::write(&path, content).unwrap();
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = fs::metadata(&path).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&path, permissions).unwrap();
+    }
+
+    (temp, path)
+}
+
 fn estimated_tokens(bytes: &[u8]) -> usize {
     let text = String::from_utf8_lossy(bytes);
     contextclean_core::count_tokens(&text)
@@ -44,10 +66,159 @@ fn help_starts_successfully() {
         .stdout(predicate::str::contains("--format"))
         .stdout(predicate::str::contains("--max-tokens"))
         .stdout(predicate::str::contains("--fit"))
+        .stdout(predicate::str::contains("gha"))
+        .stdout(predicate::str::contains("repo"))
+        .stdout(predicate::str::contains("mcp"))
         .stdout(predicate::str::contains("report"))
         .stdout(predicate::str::contains("--include-sensitive"))
         .stdout(predicate::str::contains("--redact-secrets"))
         .stdout(predicate::str::contains("--no-redact-secrets"));
+}
+
+#[test]
+fn gha_alias_defaults_to_aggressive_log_cleanup() {
+    let temp = tempdir().unwrap();
+    let input = temp.path().join("failed-log.txt");
+    fs::write(
+        &input,
+        "Compiling serde v1.0.0\nFAIL packages/api/user.test.ts\nTypeError: bad user\n",
+    )
+    .unwrap();
+
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    let output = command
+        .arg("gha")
+        .arg(&input)
+        .arg("--format")
+        .arg("json")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let parsed: Value = serde_json::from_slice(&output).unwrap();
+    let content = parsed["output"]["content"].as_str().unwrap();
+
+    assert_eq!(parsed["mode"], "aggressive");
+    assert!(content.contains("FAIL packages/api/user.test.ts"));
+    assert!(content.contains("TypeError: bad user"));
+    assert!(!content.contains("Compiling serde"));
+}
+
+#[test]
+fn repo_alias_scans_directory_with_existing_safety_defaults() {
+    let temp = tempdir().unwrap();
+    fs::create_dir_all(temp.path().join("src")).unwrap();
+    fs::create_dir_all(temp.path().join("target")).unwrap();
+    fs::write(temp.path().join("src/lib.rs"), "pub fn keep() {}\n").unwrap();
+    fs::write(
+        temp.path().join(".env"),
+        "API_KEY=sk-abcdefghijklmnopqrstuvwx",
+    )
+    .unwrap();
+    fs::write(
+        temp.path().join("target/generated.txt"),
+        "GENERATED_SENTINEL",
+    )
+    .unwrap();
+
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    command
+        .arg("repo")
+        .arg(temp.path())
+        .arg("--format")
+        .arg("text")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("src/lib.rs"))
+        .stdout(predicate::str::contains("pub fn keep"))
+        .stdout(predicate::str::contains("GENERATED_SENTINEL").not())
+        .stdout(predicate::str::contains("sk-abcdefghijklmnopqrstuvwx").not())
+        .stdout(predicate::str::contains("sensitive_path_skipped"));
+}
+
+#[test]
+fn mcp_lists_tools_and_cleans_inline_input() {
+    let request = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}
+{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}
+{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"contextclean_clean","arguments":{"text":"<script>window.analytics()</script><main><h1>Keep MCP</h1></main>","format":"text"}}}
+{"jsonrpc":"2.0","id":4,"method":"shutdown","params":{}}
+"#;
+
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    command
+        .arg("mcp")
+        .write_stdin(request)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"protocolVersion\""))
+        .stdout(predicate::str::contains("contextclean_clean"))
+        .stdout(predicate::str::contains("contextclean_report"))
+        .stdout(predicate::str::contains("Keep MCP"))
+        .stdout(predicate::str::contains("window.analytics").not());
+}
+
+#[test]
+fn ctxrun_help_starts_successfully() {
+    let mut command = Command::cargo_bin("ctxrun").unwrap();
+    command
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("ctxrun executes"))
+        .stdout(predicate::str::contains("--max-tokens"))
+        .stdout(predicate::str::contains("--fit"));
+}
+
+#[test]
+fn ctxrun_passes_successful_command_through() {
+    let (_temp, script) = if cfg!(windows) {
+        test_script("ctxrun-success", "echo CTXRUN_SUCCESS\r\nexit /b 0")
+    } else {
+        test_script("ctxrun-success", "echo CTXRUN_SUCCESS\nexit 0")
+    };
+
+    let mut command = Command::cargo_bin("ctxrun").unwrap();
+    command
+        .arg(script)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("CTXRUN_SUCCESS"))
+        .stdout(predicate::str::contains("Cleaned Context").not());
+}
+
+#[test]
+fn ctxrun_cleans_failed_output_and_preserves_exit_code() {
+    let body = if cfg!(windows) {
+        "echo added 481 packages\r\necho found 0 vulnerabilities\r\necho FAIL packages/api/user.test.ts\r\necho TypeError: bad user\r\necho     at loadUser (/app/src/user.ts:42:13)\r\necho     at loadUser (/app/src/user.ts:42:13)\r\nexit /b 7"
+    } else {
+        "echo 'added 481 packages'\necho 'found 0 vulnerabilities'\necho 'FAIL packages/api/user.test.ts'\necho 'TypeError: bad user'\necho '    at loadUser (/app/src/user.ts:42:13)'\necho '    at loadUser (/app/src/user.ts:42:13)'\nexit 7"
+    };
+    let (_temp, script) = test_script("ctxrun-fail", body);
+
+    let mut command = Command::cargo_bin("ctxrun").unwrap();
+    command
+        .arg(script)
+        .arg("--format")
+        .arg("text")
+        .assert()
+        .failure()
+        .code(7)
+        .stderr(predicate::str::contains("ctxrun: command failed"))
+        .stdout(predicate::str::contains("FAIL packages/api/user.test.ts"))
+        .stdout(predicate::str::contains("TypeError: bad user"))
+        .stdout(predicate::str::contains("added 481 packages").not());
+}
+
+#[test]
+fn ctxrun_missing_command_exits_127() {
+    let mut command = Command::cargo_bin("ctxrun").unwrap();
+    command
+        .arg("contextclean-definitely-missing-command")
+        .assert()
+        .failure()
+        .code(127)
+        .stderr(predicate::str::contains("failed to run"));
 }
 
 #[test]

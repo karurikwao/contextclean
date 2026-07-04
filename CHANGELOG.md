@@ -2,7 +2,7 @@
 
 All notable changes to ContextClean will be documented in this file.
 
-## 0.1.0 - Unreleased
+## 0.1.0 - 2026-07-04
 
 - Added Phase 0 product definition docs.
 - Added Phase 1 Rust workspace foundation.
@@ -18,4 +18,7 @@ All notable changes to ContextClean will be documented in this file.
 - Added `ctxclean report` with token savings, compression ratio, biggest noise sources, removed section summaries, recommended commands, and JSON/Markdown/text output.
 - Added explicit safety controls: `--redact-secrets`, `--no-redact-secrets`, and `--include-sensitive`.
 - Added default sensitive path skipping, sensitive scan warnings, generated-directory skips, and broader provider token redaction.
+- Added workflow integrations: `ctxclean gha`, `ctxclean repo`, stdio `ctxclean mcp`, and the `ctxrun` failure-output wrapper.
+- Added deterministic benchmark fixtures, measured launch results, and benchmark refresh script.
+- Added launch, release, growth, and V2 issue planning assets.
 - Added CI, security, contributing, and release documentation.

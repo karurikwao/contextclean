@@ -186,6 +186,7 @@ dependencies = [
  "clap",
  "contextclean-core",
  "predicates",
+ "serde",
  "serde_json",
  "tempfile",
 ]

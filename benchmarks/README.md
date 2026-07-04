@@ -1,15 +1,36 @@
 # Benchmarks
 
-This directory holds reproducible benchmark plans and fixture notes for ContextClean.
+This directory holds reproducible benchmark fixtures and generated result artifacts for ContextClean.
 
-V1 benchmark targets are intentionally modest ranges. Demo metrics should stay tied to fixture commands, and formal benchmark claims must report the required fields below.
+Run:
 
-- Dirty HTML: 60-85 percent estimated token reduction.
-- Dirty HTML article exports: 45-75 percent estimated token reduction.
-- Repeated logs: 30-80 percent estimated token reduction.
-- CI failure logs: 25-70 percent estimated token reduction.
-- Mixed Markdown/text: 20-50 percent estimated token reduction.
-- Simple project directories: 0-15 percent estimated token reduction.
-- Noisy generated directories: 30-70 percent estimated token reduction, depending on generated content.
+```powershell
+powershell -ExecutionPolicy Bypass -File ..\scripts\benchmarks.ps1
+```
 
-Benchmarks must report input tokens, output tokens, reduction percent, runtime, skipped files, warnings, and critical-content checks. Claims in the README should only use measured fixture data.
+From the repo root:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\benchmarks.ps1
+```
+
+The script:
+
+- generates deterministic large fixtures under `benchmarks/fixtures/`
+- builds the release `ctxclean` binary
+- runs exact `o200k_base` token measurements
+- checks required content is preserved
+- checks known noise is removed
+- writes `benchmarks/results.json`
+- writes `benchmarks/results.md`
+
+Current measured launch rows:
+
+| Fixture | Input tokens | Output tokens | Tokens saved | Reduction |
+|---|---:|---:|---:|---:|
+| HTML scrape | 70,571 | 5,874 | 64,697 | 91.7% |
+| CI failure log | 75,768 | 3,200 | 72,568 | 95.8% |
+| Stack trace dump | 28,189 | 1,850 | 26,339 | 93.4% |
+| Dirty HTML article | 371 | 105 | 266 | 71.7% |
+
+Claims in the README and site should stay tied to `benchmarks/results.json`, not hand-maintained estimates.

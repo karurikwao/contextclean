@@ -13,6 +13,7 @@ license = "MIT"
 authors = ["ContextClean contributors"]
 homepage = "https://contextclean.pages.dev/"
 documentation = "https://contextclean.pages.dev/"
+repository = "https://github.com/karurikwao/contextclean"
 description = "Local-first context cleaner for AI agents."
 keywords = ["llm", "cli", "context", "tokens", "ai-agents"]
 categories = ["command-line-utilities", "text-processing", "development-tools"]

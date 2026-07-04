@@ -10,14 +10,21 @@ documentation.workspace = true
 description = "ctxclean command line interface."
 keywords.workspace = true
 categories.workspace = true
+readme = "README.md"
 
 [[bin]]
 name = "ctxclean"
 path = "src/main.rs"
 
+[[bin]]
+name = "ctxrun"
+path = "src/bin/ctxrun.rs"
+
 [dependencies]
 clap.workspace = true
 contextclean-core = { version = "0.1.0", path = "../contextclean-core" }
+serde.workspace = true
+serde_json.workspace = true
 
 [dev-dependencies]
 assert_cmd.workspace = true

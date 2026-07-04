@@ -1,0 +1,101 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  preflight:
+    name: Release preflight
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.85.0
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - run: cargo test --workspace --all-features --locked
+      - run: cargo build --workspace --release --locked
+      - run: cargo package -p contextclean-core --locked
+
+  build:
+    name: Build release artifacts
+    needs: preflight
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive: tar.gz
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            archive: tar.gz
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            archive: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.85.0
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build -p contextclean-cli --release --locked --target ${{ matrix.target }}
+      - name: Package Unix artifact
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="contextclean-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          mkdir -p "$name"
+          cp "target/${{ matrix.target }}/release/ctxclean" "$name/"
+          cp "target/${{ matrix.target }}/release/ctxrun" "$name/"
+          cp README.md LICENSE CHANGELOG.md "$name/"
+          tar -czf "$name.tar.gz" "$name"
+          shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
+      - name: Package Windows artifact
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          $name = "contextclean-$env:GITHUB_REF_NAME-${{ matrix.target }}"
+          New-Item -ItemType Directory -Force -Path $name | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/ctxclean.exe" "$name/"
+          Copy-Item "target/${{ matrix.target }}/release/ctxrun.exe" "$name/"
+          Copy-Item README.md, LICENSE, CHANGELOG.md "$name/"
+          Compress-Archive -Path $name -DestinationPath "$name.zip" -Force
+          $hash = Get-FileHash "$name.zip" -Algorithm SHA256
+          "$($hash.Hash.ToLower())  $name.zip" | Set-Content "$name.zip.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: contextclean-${{ matrix.target }}
+          path: |
+            contextclean-*.tar.gz
+            contextclean-*.tar.gz.sha256
+            contextclean-*.zip
+            contextclean-*.zip.sha256
+
+  github-release:
+    name: Publish GitHub release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: dist/*
+          body_path: docs/RELEASE_NOTES_v0.1.0.md

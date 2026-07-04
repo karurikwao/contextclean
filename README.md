@@ -1,62 +1,56 @@
 # ContextClean
 
+![MSRV](https://img.shields.io/badge/MSRV-1.85-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Local First](https://img.shields.io/badge/local--first-no%20telemetry-brightgreen)
+![MCP](https://img.shields.io/badge/MCP-stdio%20server-purple)
+
 Local-first context cleaner for AI agents.
 
-ContextClean turns noisy HTML, logs, pasted terminal output, and project files into compact, reviewable, token-budget-aware context before it gets sent to an LLM. The CLI is `ctxclean`.
+ContextClean turns noisy HTML, CI logs, stack traces, pasted terminal output, and project folders into compact, redacted, token-budgeted context before it reaches an LLM. The CLI is `ctxclean`; the failure-log wrapper is `ctxrun`.
 
-> Status: V1 foundation with Phase 3-7 behavior in place: HTML cleaning, log crushing, exact token counting, model budget fitting, context reports, and repo-safety defaults.
+```bash
+ctxclean gha build.log --max-tokens 3200 --format markdown
+ctxclean repo . --fit gpt-4.1 --output context.md
+ctxrun --max-tokens 8000 npm test
+```
+
+## Proof Points
+
+Measured with `scripts/benchmarks.ps1`, the release `ctxclean` binary, and exact `o200k_base` token counts. Each row has must-keep and must-remove checks in `benchmarks/results.json`.
+
+| Fixture | Before | After | Saved | Reduction |
+|---|---:|---:|---:|---:|
+| HTML scrape | 70,571 | 5,874 | 64,697 | 91.7% |
+| CI failure log | 75,768 | 3,200 | 72,568 | 95.8% |
+| Stack trace dump | 28,189 | 1,850 | 26,339 | 93.4% |
+| Dirty HTML article | 371 | 105 | 266 | 71.7% |
 
 ## Why ContextClean?
 
-AI agents work best when they get the right context, not the most context. Raw web pages include scripts, cookie banners, tracking markup, and repeated navigation. CI logs bury the real failure under install chatter and repeated retries. Project folders can accidentally include secrets, generated files, caches, and binaries.
+AI agents work best when they get the right context, not the most context. Raw pages carry scripts, cookie banners, tracking blocks, and repeated navigation. CI logs bury the actual failure under install chatter and repeated retries. Repo scans can accidentally include generated files, caches, local env files, and secret-shaped values.
 
-ContextClean gives developers a local, deterministic first pass:
+ContextClean gives you a deterministic local first pass:
 
-```bash
-ctxclean dirty.html --mode standard --max-tokens 4000 --output clean.md
-ctxclean ./fixtures/simple_project --format json
-cat build.log | ctxclean --mode aggressive --format text
-```
+- exact OpenAI-compatible token counting with `o200k_base`
+- model budgets through `--max-tokens` and `--fit gpt-4.1|claude-sonnet|gemini-pro`
+- HTML cleanup that preserves headings, links, paragraphs, tables, lists, and code blocks
+- log crushing that keeps failed tests, timestamps, unique errors, and final summaries
+- repo-aware scanning that respects `.gitignore` and `.ctxcleanignore`
+- secret-like value redaction enabled by default
+- reports that explain tokens saved, noise sources, removed sections, and the next command to run
+- stdio MCP mode for agent workflows
+- `ctxrun` for cleaning failed command output while preserving the child exit code
 
-It emits cleaned content plus exact token metrics, budget metadata, removed sections, warnings, and truncation status.
+## Install
 
-## Works Today
-
-ContextClean is `jq` for LLM context: pipe in messy context, get back clean, compact, model-ready output.
-
-The current foundation includes:
-
-- Single-command CLI: `ctxclean [OPTIONS] [INPUT]`
-- File, directory, and stdin input
-- `light`, `standard`, and `aggressive` cleaning modes
-- Text, Markdown, and JSON output formats
-- Exact OpenAI-compatible token counting through the `o200k_base` tokenizer
-- Token-budget packing with `--max-tokens`
-- Model presets with `--fit gpt-4.1`, `--fit claude-sonnet`, and `--fit gemini-pro`
-- `ctxclean report` for token savings, biggest noise sources, removed section summaries, and recommended commands
-- Structure-preserving HTML cleanup for headings, links, paragraphs, tables, and code blocks
-- HTML execution, modal, ad, tracking, cookie, nav, footer, aside, and SVG removal
-- Log crushing for repeated lines, timestamped retries, duplicate stack frames, install noise, and failure preservation
-- Defensive redaction of secret-like values, enabled by default
-- `.gitignore` and `.ctxcleanignore` aware directory scanning
-- Default skips for `.git`, `node_modules`, build outputs, caches, sensitive dot-directories, `.env`, private keys, and certificate-like files
-- Reproducible fixtures, tests, and CI
-
-## Planned V1 Hardening
-
-- Parser-backed HTML/Markdown cleaning for malformed and deeply nested pages
-- Broader log pattern grouping for more CI providers
-- More benchmark fixtures and measured README claims
-
-## Install From Source
-
-Rust is required. Install it from [rustup.rs](https://rustup.rs/) or use the Docker commands in `docs/DEVELOPMENT.md`.
+Rust 1.85 or newer is required.
 
 ```bash
+git clone https://github.com/karurikwao/contextclean.git
+cd contextclean
 cargo install --path crates/contextclean-cli
 ```
-
-The crates.io package and release binaries are planned after the V1 implementation hardening pass.
 
 Run without installing:
 
@@ -70,6 +64,8 @@ No host Rust yet, but Docker is available:
 docker run --rm -v "${PWD}:/work" -w /work -e CARGO_TARGET_DIR=/tmp/contextclean-target rust:1.85-bookworm sh -lc 'export PATH=/usr/local/cargo/bin:$PATH; cargo test --workspace --all-features --locked'
 ```
 
+Release binaries and crates.io publishing are prepared for `v0.1.0`; see `docs/RELEASE_CHECKLIST.md`.
+
 ## Quick Start
 
 Clean an HTML export:
@@ -78,70 +74,77 @@ Clean an HTML export:
 ctxclean fixtures/dirty_html_article.html --mode standard --output clean.md --force
 ```
 
-Compress a repeated log:
+Clean a GitHub Actions failure log:
 
 ```bash
-ctxclean fixtures/ci_failure_log.txt --mode standard --format text
+ctxclean gha fixtures/ci_failure_log.txt --max-tokens 8000 --format markdown
 ```
 
-Create machine-readable output:
+Pack a repository safely:
 
 ```bash
-ctxclean fixtures/dirty_html_small.html --format json
+ctxclean repo . --max-tokens 12000 --format markdown
 ```
 
-Fit output into a budget:
+Explain why context is noisy:
 
 ```bash
-ctxclean fixtures/repeated_log.txt --max-tokens 120
+ctxclean report benchmarks/fixtures/github_actions_failure_large.log --max-tokens 8000 --format text
 ```
 
-Fit output for a model preset:
+Run a test command and only clean the output when it fails:
 
 ```bash
-ctxclean fixtures/dirty_html_article.html --fit gpt-4.1 --format markdown
+ctxrun --max-tokens 8000 pytest
+ctxrun --format markdown npm test
 ```
 
-Explain why a file is noisy:
+Start MCP server mode:
 
 ```bash
-ctxclean report fixtures/ci_failure_log.txt --max-tokens 8000 --format markdown
+ctxclean mcp
 ```
 
-Opt into sensitive files only when you mean it:
-
-```bash
-ctxclean ./project-with-local-env --include-sensitive --format json
-```
-
-## CLI
+## Commands
 
 ```text
-Usage: ctxclean [OPTIONS] [INPUT]
-       ctxclean report [OPTIONS] <INPUT>
-
-Arguments:
-  [INPUT]  File, directory, or '-' to read from stdin. If omitted, reads piped stdin.
-
-Options:
-  -o, --output, --out <OUTPUT> Write cleaned output to a file
-  -t, --max-tokens <TOKENS>    Hard ceiling for output content tokens
-      --fit <FIT>              gpt-4.1, claude-sonnet, gemini-pro
-  -m, --mode <MODE>            light, standard, aggressive [default: standard]
-  -f, --format <FORMAT>        text, markdown, json [default: markdown]
-  -c, --strip-comments         Remove obvious code comment lines
-      --dry-run                Analyze without writing output files
-      --redact-secrets         Keep default defensive redaction enabled explicitly
-      --no-redact-secrets      Disable defensive redaction
-      --include-sensitive      Include sensitive paths such as .env and private keys
-      --force                  Overwrite output file if it exists
-  -q, --quiet                  Suppress non-error diagnostics
-  -v, --verbose                Print extra diagnostics
-  -h, --help                   Show help
-  -V, --version                Show version
+ctxclean [OPTIONS] [INPUT]
+ctxclean gha [OPTIONS] <INPUT>
+ctxclean repo [OPTIONS] <INPUT>
+ctxclean report [OPTIONS] <INPUT>
+ctxclean mcp
+ctxrun [OPTIONS] <COMMAND> [ARGS]...
 ```
 
-## Sample JSON Shape
+Core options:
+
+| Option | Description |
+|---|---|
+| `-o, --output, --out <PATH>` | Write cleaned output or reports to a file |
+| `-t, --max-tokens <TOKENS>` | Hard ceiling for cleaned content tokens |
+| `--fit <MODEL>` | `gpt-4.1`, `claude-sonnet`, or `gemini-pro` |
+| `-m, --mode <MODE>` | `light`, `standard`, or `aggressive` |
+| `-f, --format <FORMAT>` | `text`, `markdown`, or `json` |
+| `-c, --strip-comments` | Remove obvious code comment lines |
+| `--redact-secrets` | Keep default redaction enabled explicitly |
+| `--no-redact-secrets` | Disable defensive redaction |
+| `--include-sensitive` | Include sensitive paths only when explicitly requested |
+| `--dry-run` | Print without writing output files |
+| `--force` | Overwrite output files |
+| `-q, --quiet` | Suppress non-error diagnostics |
+| `-v, --verbose` | Print extra diagnostics to stderr |
+
+## Integrations
+
+- `ctxclean gha failed-log.txt`: GitHub Actions-focused log cleanup. Defaults to aggressive mode.
+- `ctxclean repo .`: safe repo context packer using the same ignore and redaction pipeline as the default cleaner.
+- `ctxclean mcp`: newline-delimited JSON-RPC MCP server over stdio with `contextclean_clean` and `contextclean_report` tools.
+- `ctxrun npm test`: command wrapper that passes successful output through unchanged, cleans failed output, and exits with the child exit code.
+- Examples for Claude/Cursor/Codex, GitHub Actions, MCP clients, LangChain, and LlamaIndex live in `examples/`.
+
+## JSON Shape
+
+`--format json` emits a canonical `CleanResult` with stable top-level fields:
 
 ```json
 {
@@ -181,33 +184,62 @@ Options:
 }
 ```
 
+Report JSON uses `tokens`, `biggest_noise_sources`, `removed_section_summary`, `recommended_command`, and `warnings`, without including the cleaned body.
+
 ## Trust And Privacy
 
 ContextClean is designed to run locally.
 
-- No telemetry or network calls are part of the V1 foundation.
+- No telemetry or network calls are part of the CLI.
 - Secret-like values are redacted by default before output.
 - Directory scans skip common sensitive and generated paths by default.
 - `.gitignore` and `.ctxcleanignore` are respected for directory scans.
 - Sensitive files and credential directories require `--include-sensitive`.
-- `--include-sensitive` does not override `.gitignore` or `.ctxcleanignore`.
+- `--include-sensitive` does not override ignore files.
 - Unsafe redaction opt-out requires `--no-redact-secrets`.
 
 ContextClean does not replace a security review. Always inspect context before sharing proprietary code.
 
-## Benchmark Targets
+## Benchmarks
 
-The repo includes fixture plans in `benchmarks/`. Demo metrics should stay tied to fixture commands, and public benchmark claims should only use measured data.
+Refresh benchmark fixtures and measured tables:
 
-| Fixture type | Target reduction |
-|---|---:|
-| Dirty HTML | 60-85 percent |
-| Dirty HTML article exports | 45-75 percent |
-| Repeated logs | 30-80 percent |
-| CI failure logs | 25-70 percent |
-| Mixed Markdown/text | 20-50 percent |
-| Simple project directories | 0-15 percent |
-| Noisy generated directories | 30-70 percent |
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\benchmarks.ps1
+```
+
+Outputs:
+
+- `benchmarks/fixtures/`
+- `benchmarks/results.json`
+- `benchmarks/results.md`
+
+## Comparison
+
+| Tooling pattern | What it gives you | ContextClean difference |
+|---|---|---|
+| `cat file | llm` | Fast raw context | Cleans, redacts, measures, and budgets before paste/send |
+| Log tailing | Recent failure text | Collapses repeated noise and preserves unique failures |
+| HTML-to-Markdown converters | Readable pages | Removes AI-hostile boilerplate and reports token savings |
+| Manual prompt trimming | Human judgment | Deterministic, reproducible, exact token accounting |
+| Cloud preprocessors | Convenience | Local-first, no API keys, no telemetry |
+
+## Roadmap
+
+- V0.1.0: HTML cleaner, log crusher, token budgets, reports, repo safety, MCP stdio, `ctxrun`, launch benchmarks.
+- V0.2.0: parser-backed HTML/Markdown hardening and provider-specific CI log distillers.
+- V0.3.0: GitHub Action wrapper, Homebrew formula, shell completions, and richer release binaries.
+- V0.4.0: Python package and LangChain/LlamaIndex helper packages.
+- V0.5.0: AST-aware code compression and MCP compatibility matrix.
+
+## Good First Issues
+
+- Add a real-world GitHub Actions fixture from a public failing workflow.
+- Add a malformed HTML fixture that currently needs parser-backed cleanup.
+- Add shell completions for Bash, Zsh, Fish, and PowerShell.
+- Add a Homebrew formula draft.
+- Add more MCP client config examples.
+- Add benchmark fixtures for Docker Buildx, pytest, cargo, and Playwright logs.
 
 ## Development
 
@@ -228,17 +260,6 @@ On Windows PowerShell:
 
 The Cloudflare Pages landing site lives in `site/` and is configured by `wrangler.toml`.
 
-## Roadmap
-
-- Phase 2: exact tokenizer support and stronger semantic truncation. Implemented with `o200k_base` counting and semantic boundary packing.
-- Phase 3: HTML and Markdown cleaner. Implemented with parser-light deterministic conversion; parser-backed hardening remains planned.
-- Phase 4: Log Crusher. Implemented for repeated lines, duplicate stack frames, install noise, and failure preservation.
-- Phase 5: token budget packer. Implemented with `--max-tokens`, `--fit`, exact counts, semantic truncation, and truncation footers.
-- Phase 6: context reports. Implemented with `ctxclean report`.
-- Phase 7: safety and repo awareness. Implemented with ignore handling, default skips, sensitive-path warnings, redaction, and explicit sensitive opt-in.
-
-Future phases: MCP server mode, release binaries, crates.io package, Python wrapper, and provider-specific CI log distillers.
-
 ## Contributing
 
-Issues and pull requests are welcome once the repository is published. Start with `CONTRIBUTING.md`, `docs/MVP_SCOPE.md`, and `docs/ARCHITECTURE.md`.
+Issues and pull requests are welcome once the repository is published. Start with `CONTRIBUTING.md`, `docs/MVP_SCOPE.md`, `docs/ARCHITECTURE.md`, and `docs/ROADMAP.md`.

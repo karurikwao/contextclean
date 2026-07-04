@@ -40,17 +40,22 @@ This wastes context windows, increases LLM cost, and raises the risk of leaking 
 4. Fit cleaned context into an explicit model budget.
 5. Generate JSON metrics for automation.
 6. Run `ctxclean report` to explain token savings, biggest noise sources, and the recommended cleanup command.
+7. Run `ctxclean gha` or `ctxrun` inside AI-assisted debugging loops.
+8. Expose ContextClean through `ctxclean mcp` to MCP-capable agents.
 
 ## Success Criteria
 
 - A new user understands the value from the README in under 30 seconds.
 - `ctxclean --help` works after building from source.
 - `ctxclean <file>` produces useful output without configuration.
+- `ctxclean gha`, `ctxclean repo`, `ctxclean mcp`, and `ctxrun` have smoke coverage.
 - JSON output is stable enough for automation.
 - Secret-like values are redacted by default.
+- README claims are backed by generated benchmark artifacts.
 - The repo builds and tests in CI on Linux, macOS, and Windows.
 
 ## Open Product Questions
 
 - How much AST-aware code compression belongs in V1 versus V2?
-- Which MCP client should be the first integration target?
+- Which MCP clients should be in the first compatibility matrix?
+- Should `ctxrun` add streaming capture and timeout controls before `v0.2.0`?

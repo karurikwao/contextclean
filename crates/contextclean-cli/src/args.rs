@@ -20,6 +20,12 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum CliCommand {
+    /// Clean a GitHub Actions failure log for AI debugging workflows.
+    Gha(GhaArgs),
+    /// Build a safe context pack from a repository or project directory.
+    Repo(RepoArgs),
+    /// Run a minimal stdio MCP server for agent integrations.
+    Mcp(McpArgs),
     /// Explain token savings, removed sections, and recommended cleanup command.
     Report(ReportArgs),
 }
@@ -43,6 +49,27 @@ pub struct ReportArgs {
 }
 
 #[derive(Debug, Clone, Args)]
+pub struct GhaArgs {
+    /// GitHub Actions log file, or '-' to read from stdin.
+    pub input: PathBuf,
+
+    #[command(flatten)]
+    pub options: SharedArgs,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct RepoArgs {
+    /// Repository or project directory to pack safely.
+    pub input: PathBuf,
+
+    #[command(flatten)]
+    pub options: SharedArgs,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct McpArgs {}
+
+#[derive(Debug, Clone, Args)]
 pub struct SharedArgs {
     /// Write output to a file instead of stdout.
     #[arg(short = 'o', long = "output", visible_alias = "out")]
@@ -57,8 +84,8 @@ pub struct SharedArgs {
     pub fit: Option<CliFit>,
 
     /// Optimization depth.
-    #[arg(short = 'm', long = "mode", value_enum, default_value_t = CliMode::Standard)]
-    pub mode: CliMode,
+    #[arg(short = 'm', long = "mode", value_enum)]
+    pub mode: Option<CliMode>,
 
     /// Output structural layout.
     #[arg(short = 'f', long = "format", value_enum, default_value_t = CliFormat::Markdown)]
@@ -100,6 +127,9 @@ pub struct SharedArgs {
 impl Cli {
     pub fn validate(&self) -> Result<(), String> {
         match &self.command {
+            Some(CliCommand::Gha(gha)) => gha.options.validate(),
+            Some(CliCommand::Repo(repo)) => repo.options.validate(),
+            Some(CliCommand::Mcp(_)) => Ok(()),
             Some(CliCommand::Report(report)) => report.options.validate(),
             None => self.clean.options.validate(),
         }
@@ -131,6 +161,10 @@ impl SharedArgs {
     pub fn effective_max_tokens(&self) -> Option<usize> {
         self.max_tokens
             .or_else(|| self.fit.map(|fit| FitModel::from(fit).max_tokens()))
+    }
+
+    pub fn effective_mode(&self, default: CliMode) -> CliMode {
+        self.mode.unwrap_or(default)
     }
 }
 
@@ -188,7 +222,7 @@ impl From<CliFit> for FitModel {
     }
 }
 
-fn parse_positive_usize(value: &str) -> Result<usize, String> {
+pub fn parse_positive_usize(value: &str) -> Result<usize, String> {
     let parsed = value
         .parse::<usize>()
         .map_err(|_| "must be a positive integer".to_string())?;

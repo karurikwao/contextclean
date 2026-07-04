@@ -58,16 +58,32 @@
 - `--include-sensitive` explicit opt-in.
 - Secret redaction enabled by default.
 
-## Future: Agent Integrations
+## Phase 8: Integrations
 
-- MCP server.
-- Agent workflow examples.
-- GitHub Action.
-- Cursor/Codex/Claude Code integration docs.
+- `ctxclean gha` for CI/GitHub Actions failure logs.
+- `ctxclean repo` for explicit safe repository context packs.
+- `ctxclean mcp` stdio JSON-RPC MCP server with clean/report tools.
+- `ctxrun` command wrapper for failed test/build output.
+- Claude/Cursor/Codex, GitHub Actions, MCP, LangChain, and LlamaIndex examples.
+
+## Phase 9: Benchmarks And Launch Assets
+
+- Deterministic large benchmark fixture generation.
+- `benchmarks/results.json` and `benchmarks/results.md`.
+- README proof table, comparison table, roadmap, and good-first-issue list.
+- Cloudflare Pages launch copy aligned with measured fixtures.
+
+## Phase 10: Release And Growth
+
+- Release checklist and release notes prepared for `v0.1.0`.
+- Release workflow draft for cross-platform artifacts.
+- GitHub topics, launch post, awesome-list submission notes, and V2 issue seeds.
 
 ## Future: Distribution
 
-- crates.io package.
-- Cross-platform release binaries.
+- crates.io package publish after registry credentials and package dry-runs are green.
+- Cross-platform release binaries attached to the GitHub release after a remote is configured.
 - Homebrew formula.
 - Python wrapper.
+- Provider-specific CI log distillers.
+- Parser-backed HTML/Markdown cleaner hardening.

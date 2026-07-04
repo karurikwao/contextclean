@@ -12,6 +12,10 @@
 - `--max-tokens` using deterministic token-budget packing.
 - `--fit gpt-4.1|claude-sonnet|gemini-pro` model presets.
 - `ctxclean report <INPUT>` for token savings, compression ratio, biggest noise sources, removed section summary, and recommended command.
+- `ctxclean gha <INPUT>` for CI/GitHub Actions-focused log cleanup.
+- `ctxclean repo <PATH>` for explicit safe repository context packs.
+- `ctxclean mcp` for stdio MCP clean/report tools.
+- `ctxrun <COMMAND> [ARGS]...` for cleaning failed command output.
 - `--strip-comments` for obvious line comments.
 - HTML execution block removal: `script`, `style`, and `noscript`.
 - Standard HTML boilerplate removal: `nav`, `footer`, `aside`, `svg`, comments, cookie/newsletter/ad/modal/tracking blocks, and short high-confidence boilerplate lines.
@@ -24,6 +28,7 @@
 - Default skips for sensitive/generated paths.
 - Tests for CLI startup, output formats, cleaner behavior, redaction, and directory safety.
 - CI for format, clippy, test, and release build.
+- Deterministic benchmark fixture generation and measured launch result artifacts.
 
 ## V1 Non-Goals
 
@@ -31,12 +36,15 @@
 - No cloud service, accounts, telemetry, or hosted storage.
 - No remote repository cloning.
 - No editor extension.
+- No packaged Python distribution yet.
+- No GitHub Action wrapper package yet.
 - No model API calls.
 - No AI-generated summaries.
 - No perfect semantic compression guarantee.
 - No AST-aware code understanding yet.
 - No fully parser-backed HTML DOM cleanup yet.
 - No provider-specific CI log parser yet.
+- No streaming or timeout-aware `ctxrun` capture yet.
 - No plugin system.
 - No background daemon or file watcher.
 - No mutation of input files.
