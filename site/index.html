@@ -31,7 +31,7 @@
           <h1>Stop paying LLMs to read raw HTML, repeated logs, and secret-shaped noise.</h1>
           <p class="lede">
             ContextClean turns noisy files, web exports, terminal output, and project folders into
-            compact, reviewable, token-budgeted context packs.
+            compact, reviewable, token-budgeted context packs with reports that explain the savings.
           </p>
           <div class="actions" aria-label="Primary actions">
             <a class="button primary" href="#install">Install from source</a>
@@ -45,21 +45,21 @@
             <span></span>
             <span></span>
           </div>
-          <pre><code>$ ctxclean dirty.html --mode standard --format text
+          <pre><code>$ ctxclean report build.log --max-tokens 8000
 
-input_tokens:       321
-output_tokens:      110
-tokens_saved:       211
-reduction:         65.7%
+ContextClean Report
+input_tokens:       1,284
+output_tokens:        418
+tokens_saved:         866
+compression_ratio:  0.326
 
-removed:
-- script/style/svg blocks
-- nav/footer/aside boilerplate
-- cookie, modal, ad, tracking noise
+biggest_noise_sources:
+- repetition: 312 tokens (repeated log lines)
+- stack_trace: 93 tokens (duplicate stack frames)
+- log_noise: 38 tokens (safe install/build noise)
 
-preserved:
-- headings, links, tables
-- fenced code blocks</code></pre>
+recommended_command:
+ctxclean build.log --max-tokens 8000 --format markdown</code></pre>
         </div>
       </section>
 
@@ -127,7 +127,7 @@ Reduction: 27.3%</code></pre>
 
       <section id="features" class="features">
         <div class="section-heading">
-          <p class="eyebrow">HTML Cleaner + Log Crusher</p>
+          <p class="eyebrow">Cleaner + Crusher + Reporter</p>
           <h2>Built for the context AI agents actually need</h2>
         </div>
         <div class="feature-grid">
@@ -144,8 +144,16 @@ Reduction: 27.3%</code></pre>
             <p>Collapse repeated lines and duplicate stack frames while preserving failed tests, timestamps, and final errors.</p>
           </article>
           <article>
+            <h3>Budget Packer</h3>
+            <p>Use exact token counting, <code>--max-tokens</code>, and model presets for GPT, Claude, and Gemini-sized contexts.</p>
+          </article>
+          <article>
+            <h3>Context Reports</h3>
+            <p>Run <code>ctxclean report</code> to see input tokens, output tokens, compression ratio, biggest noise, and the command to use next.</p>
+          </article>
+          <article>
             <h3>Protect</h3>
-            <p>Redact secret-like values by default and respect ignore files during directory scans.</p>
+            <p>Redact secret-like values by default, respect ignore files, skip generated paths, and require explicit sensitive-file opt-in.</p>
           </article>
         </div>
       </section>
@@ -157,7 +165,8 @@ Reduction: 27.3%</code></pre>
         </div>
         <pre class="install"><code>cargo install --path crates/contextclean-cli
 
-ctxclean fixtures/dirty_html_small.html --format json</code></pre>
+ctxclean fixtures/dirty_html_small.html --fit gpt-4.1 --format json
+ctxclean report fixtures/ci_failure_log.txt --max-tokens 8000</code></pre>
       </section>
 
       <section id="trust" class="trust">
@@ -169,6 +178,7 @@ ctxclean fixtures/dirty_html_small.html --format json</code></pre>
           <li>No network calls in the local CLI.</li>
           <li>Secret-like values are redacted before rendering output.</li>
           <li>Directory scans skip generated and sensitive paths by default.</li>
+          <li>Sensitive files require <code>--include-sensitive</code>.</li>
           <li>CI covers format, clippy, tests, MSRV check, and release builds.</li>
         </ul>
       </section>

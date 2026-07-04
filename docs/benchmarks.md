@@ -19,8 +19,8 @@ Future fixture groups:
 
 ## Required Metrics
 
-- input bytes, chars, estimated tokens
-- output bytes, chars, estimated tokens
+- input bytes, chars, exact tokens
+- output bytes, chars, exact tokens
 - tokens saved
 - reduction percent
 - runtime

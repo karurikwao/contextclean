@@ -17,8 +17,9 @@
 
 ## Phase 2: Token And Truncation Hardening
 
-- Exact tokenizer support for common model vocabularies.
+- Exact token counting through `o200k_base`.
 - Stronger semantic truncation boundaries.
+- Model preset aliases for `gpt-4.1`, `claude-sonnet`, and `gemini-pro`.
 
 ## Phase 3: HTML And Markdown Cleaner
 
@@ -35,21 +36,36 @@
 - Failed test, final error, timestamp, and stack-root preservation.
 - GitHub Actions log distiller remains future hardening.
 
-## Phase 5: Context Reports
+## Phase 5: Token Budget Packer
+
+- `--max-tokens`.
+- `--fit gpt-4.1|claude-sonnet|gemini-pro`.
+- Semantic truncation at paragraph and code boundaries.
+- Footer explaining removed tokens and target budget.
+
+## Phase 6: Context Reports
 
 - `ctxclean report`.
 - Noise source ranking.
 - Suggested command output.
-- Explain/diff mode for removed content.
+- Removed section summary.
 
-## Phase 6: Agent Integrations
+## Phase 7: Safety And Repo Awareness
+
+- `.gitignore` and `.ctxcleanignore` support.
+- Generated directory skips for `.git`, `node_modules`, `target`, `dist`, `build`, caches, and virtual environments.
+- Sensitive path skips and warnings by default.
+- `--include-sensitive` explicit opt-in.
+- Secret redaction enabled by default.
+
+## Future: Agent Integrations
 
 - MCP server.
 - Agent workflow examples.
 - GitHub Action.
 - Cursor/Codex/Claude Code integration docs.
 
-## Phase 7: Distribution
+## Future: Distribution
 
 - crates.io package.
 - Cross-platform release binaries.

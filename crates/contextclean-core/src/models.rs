@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::budget::FitModel;
 use crate::config::{CleanMode, OutputFormat};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -11,6 +12,7 @@ pub struct CleanResult {
     pub input: InputStats,
     pub output: OutputBlock,
     pub metrics: Metrics,
+    pub budget: Budget,
     pub truncation: Truncation,
     pub removed_sections: Vec<RemovedSection>,
     pub noise_sources: Vec<NoiseSource>,
@@ -40,6 +42,27 @@ pub struct Metrics {
     pub tokens_saved: isize,
     pub compression_ratio: f64,
     pub reduction_percent: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Budget {
+    pub fit: Option<FitModel>,
+    pub model_id: Option<String>,
+    pub tokenizer: String,
+    pub token_count_is_exact: bool,
+    pub preset_limit_tokens: Option<usize>,
+    pub effective_limit_tokens: Option<usize>,
+    pub model_max_output_tokens: Option<usize>,
+    pub limit_source: BudgetLimitSource,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BudgetLimitSource {
+    None,
+    MaxTokens,
+    Fit,
+    FitAndMaxTokens,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

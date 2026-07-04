@@ -4,7 +4,7 @@ Local-first context cleaner for AI agents.
 
 ContextClean turns noisy HTML, logs, pasted terminal output, and project files into compact, reviewable, token-budget-aware context before it gets sent to an LLM. The CLI is `ctxclean`.
 
-> Status: V1 foundation with Phase 3/4 HTML Cleaner and Log Crusher behavior in place. Exact tokenizer support and parser-backed HTML hardening are still planned.
+> Status: V1 foundation with Phase 3-7 behavior in place: HTML cleaning, log crushing, exact token counting, model budget fitting, context reports, and repo-safety defaults.
 
 ## Why ContextClean?
 
@@ -18,7 +18,7 @@ ctxclean ./fixtures/simple_project --format json
 cat build.log | ctxclean --mode aggressive --format text
 ```
 
-It emits cleaned content plus metrics such as estimated input tokens, output tokens, tokens saved, removed sections, warnings, and truncation status.
+It emits cleaned content plus exact token metrics, budget metadata, removed sections, warnings, and truncation status.
 
 ## Works Today
 
@@ -30,20 +30,22 @@ The current foundation includes:
 - File, directory, and stdin input
 - `light`, `standard`, and `aggressive` cleaning modes
 - Text, Markdown, and JSON output formats
-- Estimated token-budget packing with `--max-tokens`
+- Exact OpenAI-compatible token counting through the `o200k_base` tokenizer
+- Token-budget packing with `--max-tokens`
+- Model presets with `--fit gpt-4.1`, `--fit claude-sonnet`, and `--fit gemini-pro`
+- `ctxclean report` for token savings, biggest noise sources, removed section summaries, and recommended commands
 - Structure-preserving HTML cleanup for headings, links, paragraphs, tables, and code blocks
 - HTML execution, modal, ad, tracking, cookie, nav, footer, aside, and SVG removal
 - Log crushing for repeated lines, timestamped retries, duplicate stack frames, install noise, and failure preservation
-- Defensive redaction of secret-like values
+- Defensive redaction of secret-like values, enabled by default
 - `.gitignore` and `.ctxcleanignore` aware directory scanning
+- Default skips for `.git`, `node_modules`, build outputs, caches, sensitive dot-directories, `.env`, private keys, tokens, and certificate-like files
 - Reproducible fixtures, tests, and CI
 
 ## Planned V1 Hardening
 
-- Exact tokenizer support for common OpenAI-compatible vocabularies
 - Parser-backed HTML/Markdown cleaning for malformed and deeply nested pages
 - Broader log pattern grouping for more CI providers
-- Context reports with noise source ranking
 - More benchmark fixtures and measured README claims
 
 ## Install From Source
@@ -65,7 +67,7 @@ cargo run -p contextclean-cli -- fixtures/dirty_html_small.html --format json
 No host Rust yet, but Docker is available:
 
 ```bash
-docker run --rm -v "${PWD}:/work" -w /work -e CARGO_TARGET_DIR=/tmp/contextclean-target rust:1.85-bookworm cargo test --workspace --all-features --locked
+docker run --rm -v "${PWD}:/work" -w /work -e CARGO_TARGET_DIR=/tmp/contextclean-target rust:1.85-bookworm sh -lc 'export PATH=/usr/local/cargo/bin:$PATH; cargo test --workspace --all-features --locked'
 ```
 
 ## Quick Start
@@ -94,22 +96,44 @@ Fit output into a budget:
 ctxclean fixtures/repeated_log.txt --max-tokens 120
 ```
 
+Fit output for a model preset:
+
+```bash
+ctxclean fixtures/dirty_html_article.html --fit gpt-4.1 --format markdown
+```
+
+Explain why a file is noisy:
+
+```bash
+ctxclean report fixtures/ci_failure_log.txt --max-tokens 8000 --format markdown
+```
+
+Opt into sensitive files only when you mean it:
+
+```bash
+ctxclean ./project-with-local-env --include-sensitive --format json
+```
+
 ## CLI
 
 ```text
 Usage: ctxclean [OPTIONS] [INPUT]
+       ctxclean report [OPTIONS] <INPUT>
 
 Arguments:
   [INPUT]  File, directory, or '-' to read from stdin. If omitted, reads piped stdin.
 
 Options:
   -o, --output, --out <OUTPUT> Write cleaned output to a file
-  -t, --max-tokens <TOKENS>    Hard ceiling for estimated output tokens
+  -t, --max-tokens <TOKENS>    Hard ceiling for output content tokens
+      --fit <FIT>              gpt-4.1, claude-sonnet, gemini-pro
   -m, --mode <MODE>            light, standard, aggressive [default: standard]
   -f, --format <FORMAT>        text, markdown, json [default: markdown]
   -c, --strip-comments         Remove obvious code comment lines
       --dry-run                Analyze without writing output files
+      --redact-secrets         Keep default defensive redaction enabled explicitly
       --no-redact-secrets      Disable defensive redaction
+      --include-sensitive      Include sensitive paths such as .env and private keys
       --force                  Overwrite output file if it exists
   -q, --quiet                  Suppress non-error diagnostics
   -v, --verbose                Print extra diagnostics
@@ -134,6 +158,16 @@ Options:
     "compression_ratio": 0.376,
     "reduction_percent": 62.4
   },
+  "budget": {
+    "fit": null,
+    "model_id": null,
+    "tokenizer": "o200k_base",
+    "token_count_is_exact": true,
+    "preset_limit_tokens": null,
+    "effective_limit_tokens": null,
+    "model_max_output_tokens": null,
+    "limit_source": "none"
+  },
   "truncation": {
     "applied": false,
     "limit_tokens": null,
@@ -153,9 +187,11 @@ ContextClean is designed to run locally.
 
 - No telemetry or network calls are part of the V1 foundation.
 - Secret-like values are redacted by default before output.
-- Directory scans skip common sensitive and generated paths.
+- Directory scans skip common sensitive and generated paths by default.
 - `.gitignore` and `.ctxcleanignore` are respected for directory scans.
-- Unsafe redaction opt-out requires an explicit flag.
+- Sensitive files and credential directories require `--include-sensitive`.
+- `--include-sensitive` does not override `.gitignore` or `.ctxcleanignore`.
+- Unsafe redaction opt-out requires `--no-redact-secrets`.
 
 ContextClean does not replace a security review. Always inspect context before sharing proprietary code.
 
@@ -194,12 +230,14 @@ The Cloudflare Pages landing site lives in `site/` and is configured by `wrangle
 
 ## Roadmap
 
-- Phase 2: exact tokenizer support and stronger semantic truncation.
+- Phase 2: exact tokenizer support and stronger semantic truncation. Implemented with `o200k_base` counting and semantic boundary packing.
 - Phase 3: HTML and Markdown cleaner. Implemented with parser-light deterministic conversion; parser-backed hardening remains planned.
 - Phase 4: Log Crusher. Implemented for repeated lines, duplicate stack frames, install noise, and failure preservation.
-- Phase 5: context reports and explain/diff output.
-- Phase 6: MCP server mode for AI agents.
-- Phase 7: release binaries, crates.io package, and Python wrapper.
+- Phase 5: token budget packer. Implemented with `--max-tokens`, `--fit`, exact counts, semantic truncation, and truncation footers.
+- Phase 6: context reports. Implemented with `ctxclean report`.
+- Phase 7: safety and repo awareness. Implemented with ignore handling, default skips, sensitive-path warnings, redaction, and explicit sensitive opt-in.
+
+Future phases: MCP server mode, release binaries, crates.io package, Python wrapper, and provider-specific CI log distillers.
 
 ## Contributing
 

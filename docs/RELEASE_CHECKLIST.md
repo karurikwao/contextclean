@@ -23,6 +23,9 @@
 - [ ] `ctxclean fixtures/ci_failure_log.txt --mode standard --format json`
 - [ ] `ctxclean fixtures/simple_project --mode standard`
 - [ ] `ctxclean fixtures/repeated_log.txt --max-tokens 120`
+- [ ] `ctxclean fixtures/dirty_html_article.html --fit gpt-4.1 --format json`
+- [ ] `ctxclean report fixtures/ci_failure_log.txt --max-tokens 8000 --format json`
+- [ ] Create a temporary directory with `src/keep.txt` and `.env`, then verify `ctxclean <tempdir> --include-sensitive --format json` includes `.env` with `[REDACTED_SECRET]`
 
 ## Cloudflare Pages
 

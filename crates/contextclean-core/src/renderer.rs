@@ -1,3 +1,4 @@
+use crate::budget::count_tokens;
 use crate::config::OutputFormat;
 use crate::error::ContextCleanError;
 use crate::models::CleanResult;
@@ -23,7 +24,7 @@ pub fn render_result(
 }
 
 fn render_text(result: &CleanResult) -> String {
-    format!(
+    let mut rendered = format!(
         "{}\n\n---\nctxclean v{}\nmode: {:?}\nformat: {:?}\ninput_tokens: {}\noutput_tokens: {}\ntokens_saved: {}\nreduction_percent: {:.1}%\ntruncation: {}\n",
         result.output.content,
         result.version,
@@ -34,7 +35,14 @@ fn render_text(result: &CleanResult) -> String {
         result.metrics.tokens_saved,
         result.metrics.reduction_percent,
         result.truncation.applied
-    )
+    );
+    if !result.warnings.is_empty() {
+        rendered.push_str("warnings:\n");
+        for warning in &result.warnings {
+            rendered.push_str(&format!("- {}: {}\n", warning.code, warning.message));
+        }
+    }
+    rendered
 }
 
 fn render_markdown(result: &CleanResult) -> String {
@@ -99,6 +107,10 @@ fn enforce_render_budget(result: &CleanResult, rendered: String, format: OutputF
         return rendered;
     }
 
+    if result.truncation.applied && estimate_tokens(&result.output.content) <= max_tokens {
+        return result.output.content.clone();
+    }
+
     match format {
         OutputFormat::Text => render_budgeted_human(
             "",
@@ -143,11 +155,7 @@ fn fit_to_estimated_tokens(input: &str, max_tokens: usize) -> String {
 }
 
 fn estimate_tokens(input: &str) -> usize {
-    if input.is_empty() {
-        0
-    } else {
-        input.chars().count().div_ceil(4)
-    }
+    count_tokens(input)
 }
 
 #[cfg(test)]
@@ -165,7 +173,7 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&rendered).unwrap();
 
         assert_eq!(parsed["version"], env!("CARGO_PKG_VERSION"));
-        assert_eq!(parsed["metrics"]["input_tokens"], 2);
+        assert_eq!(parsed["metrics"]["input_tokens"], estimate_tokens("hello"));
     }
 
     #[test]

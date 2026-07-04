@@ -24,8 +24,8 @@ Decision: V1 foundation contains no network calls, telemetry, hosted service, or
 
 Reason: Trust and privacy are core adoption drivers for context tooling.
 
-## ADR-0005: Estimated Tokens Before Exact Tokenizers
+## ADR-0005: Exact Local Token Counting
 
-Decision: Phase 1 uses deterministic estimated token counts.
+Decision: Use local `o200k_base` token counting for metrics and budget enforcement.
 
-Reason: The repo needs a buildable foundation first. Exact tokenizer support is a Phase 2 hardening task.
+Reason: Phase 1 started with deterministic estimates to keep the foundation buildable. Phase 5 now requires exact, explainable budget packing, and `o200k_base` gives ContextClean an OpenAI-compatible baseline without model API calls.

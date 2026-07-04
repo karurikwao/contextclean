@@ -9,6 +9,46 @@ use crate::models::{Warning, WarningSeverity};
 
 const MAX_FILE_BYTES: u64 = 1_048_576;
 const MAX_DIRECTORY_BYTES: usize = 4 * 1_048_576;
+const GENERATED_COMPONENTS: &[&str] = &[
+    ".git",
+    "node_modules",
+    "target",
+    "dist",
+    "build",
+    "coverage",
+    ".cache",
+    ".next",
+    ".turbo",
+    ".wrangler",
+    ".vite",
+    ".pytest_cache",
+    "__pycache__",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".parcel-cache",
+    ".yarn",
+    ".pnpm-store",
+    ".venv",
+    "venv",
+    "tmp",
+    "temp",
+];
+const SENSITIVE_COMPONENTS: &[&str] = &[
+    ".aws",
+    ".azure",
+    ".config",
+    ".docker",
+    ".gcloud",
+    ".gnupg",
+    ".gradle",
+    ".kube",
+    ".local",
+    ".m2",
+    ".npm",
+    ".pulumi",
+    ".ssh",
+    ".terraform",
+];
 
 #[derive(Debug, Clone)]
 pub struct SourceData {
@@ -17,11 +57,23 @@ pub struct SourceData {
     pub warnings: Vec<Warning>,
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ReadOptions {
+    pub include_sensitive: bool,
+}
+
 pub fn read_source(input: Option<&Path>) -> Result<SourceData, ContextCleanError> {
+    read_source_with_options(input, &ReadOptions::default())
+}
+
+pub fn read_source_with_options(
+    input: Option<&Path>,
+    options: &ReadOptions,
+) -> Result<SourceData, ContextCleanError> {
     match input {
         Some(path) if path == Path::new("-") => read_stdin(),
-        Some(path) if path.is_file() => read_file(path),
-        Some(path) if path.is_dir() => read_directory(path),
+        Some(path) if path.is_file() => read_file(path, options),
+        Some(path) if path.is_dir() => read_directory(path, options),
         Some(path) => Err(ContextCleanError::InputNotFound(path.display().to_string())),
         None => {
             if io::stdin().is_terminal() {
@@ -58,7 +110,13 @@ fn read_stdin() -> Result<SourceData, ContextCleanError> {
     })
 }
 
-fn read_file(path: &Path) -> Result<SourceData, ContextCleanError> {
+fn read_file(path: &Path, options: &ReadOptions) -> Result<SourceData, ContextCleanError> {
+    if !options.include_sensitive && is_sensitive_path(path) {
+        return Err(ContextCleanError::ReadInput(format!(
+            "sensitive input requires --include-sensitive: {}",
+            path.display()
+        )));
+    }
     let metadata = fs::metadata(path)
         .map_err(|error| ContextCleanError::ReadInput(format!("{}: {error}", path.display())))?;
     if metadata.len() > MAX_FILE_BYTES {
@@ -87,7 +145,20 @@ fn read_file(path: &Path) -> Result<SourceData, ContextCleanError> {
     })
 }
 
-fn read_directory(path: &Path) -> Result<SourceData, ContextCleanError> {
+fn read_directory(path: &Path, options: &ReadOptions) -> Result<SourceData, ContextCleanError> {
+    if !options.include_sensitive && is_sensitive_path(path) {
+        return Err(ContextCleanError::ReadInput(format!(
+            "sensitive input requires --include-sensitive: {}",
+            path.display()
+        )));
+    }
+    if is_generated_root(path) {
+        return Err(ContextCleanError::ReadInput(format!(
+            "generated input is skipped by default: {}",
+            path.display()
+        )));
+    }
+
     let mut files = Vec::new();
     let mut warnings = Vec::new();
     let mut builder = WalkBuilder::new(path);
@@ -105,8 +176,20 @@ fn read_directory(path: &Path) -> Result<SourceData, ContextCleanError> {
         if !entry_path.is_file() {
             continue;
         }
-        if should_skip_default(entry_path) {
-            continue;
+        let relative_path = entry_path.strip_prefix(path).unwrap_or(entry_path);
+        match classify_skip(relative_path) {
+            Some(SkipReason::Generated) => continue,
+            Some(SkipReason::Sensitive) if !options.include_sensitive => {
+                warnings.push(warning(
+                    "sensitive_path_skipped",
+                    format!(
+                        "skipped sensitive path; pass --include-sensitive to include: {}",
+                        display_relative(path, entry_path)
+                    ),
+                ));
+                continue;
+            }
+            _ => {}
         }
         files.push(entry_path.to_path_buf());
     }
@@ -218,14 +301,30 @@ fn looks_binary(bytes: &[u8]) -> bool {
     bytes.iter().take(1024).any(|byte| *byte == 0)
 }
 
-fn should_skip_default(path: &Path) -> bool {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SkipReason {
+    Generated,
+    Sensitive,
+}
+
+fn classify_skip(path: &Path) -> Option<SkipReason> {
+    if has_generated_component(path) {
+        return Some(SkipReason::Generated);
+    }
+    if is_sensitive_path(path) {
+        return Some(SkipReason::Sensitive);
+    }
+    None
+}
+
+fn is_sensitive_path(path: &Path) -> bool {
     let file_name = path
         .file_name()
         .and_then(|name| name.to_str())
         .unwrap_or_default()
         .to_ascii_lowercase();
 
-    has_skip_component(path)
+    has_sensitive_component(path)
         || file_name.starts_with(".env")
         || file_name == ".netrc"
         || file_name == ".boto"
@@ -251,36 +350,30 @@ fn should_skip_default(path: &Path) -> bool {
         || file_name == ".ctxcleanignore"
 }
 
-fn has_skip_component(path: &Path) -> bool {
-    const SKIP_COMPONENTS: &[&str] = &[
-        ".git",
-        ".aws",
-        ".azure",
-        ".config",
-        ".docker",
-        ".gcloud",
-        ".gnupg",
-        ".gradle",
-        ".kube",
-        ".local",
-        ".m2",
-        ".npm",
-        ".pulumi",
-        ".ssh",
-        ".terraform",
-        "node_modules",
-        "target",
-        "dist",
-        "build",
-        "coverage",
-        ".cache",
-        ".next",
-        ".turbo",
-    ];
+fn has_generated_component(path: &Path) -> bool {
+    has_component(path, GENERATED_COMPONENTS)
+}
 
+fn has_sensitive_component(path: &Path) -> bool {
+    has_component(path, SENSITIVE_COMPONENTS)
+}
+
+fn is_generated_root(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| {
+            let name = name.to_ascii_lowercase();
+            GENERATED_COMPONENTS
+                .iter()
+                .any(|component| *component == name)
+        })
+        .unwrap_or(false)
+}
+
+fn has_component(path: &Path, names: &[&str]) -> bool {
     path.components().any(|component| {
         let component = component.as_os_str().to_string_lossy().to_ascii_lowercase();
-        SKIP_COMPONENTS.contains(&component.as_str())
+        names.contains(&component.as_str())
     })
 }
 
@@ -306,7 +399,9 @@ mod tests {
 
     use tempfile::tempdir;
 
-    use super::{read_source, MAX_DIRECTORY_BYTES, MAX_FILE_BYTES};
+    use super::{
+        read_source, read_source_with_options, ReadOptions, MAX_DIRECTORY_BYTES, MAX_FILE_BYTES,
+    };
 
     #[test]
     fn directory_reader_skips_sensitive_defaults() {
@@ -319,6 +414,10 @@ mod tests {
 
         assert!(data.content.contains("src/app.rs"));
         assert!(!data.content.contains("secret-value"));
+        assert!(data
+            .warnings
+            .iter()
+            .any(|warning| warning.code == "sensitive_path_skipped"));
     }
 
     #[test]
@@ -348,6 +447,36 @@ mod tests {
             .warnings
             .iter()
             .any(|warning| warning.code == "oversized_file_skipped"));
+    }
+
+    #[test]
+    fn include_sensitive_allows_sensitive_files_for_redaction_pipeline() {
+        let temp = tempdir().unwrap();
+        fs::create_dir_all(temp.path().join("src")).unwrap();
+        fs::write(temp.path().join("src/app.rs"), "fn main() {}\n").unwrap();
+        fs::write(temp.path().join(".env"), "TOKEN=secret-value\n").unwrap();
+
+        let data = read_source_with_options(
+            Some(temp.path()),
+            &ReadOptions {
+                include_sensitive: true,
+            },
+        )
+        .unwrap();
+
+        assert!(data.content.contains(".env"));
+        assert!(data.content.contains("secret-value"));
+    }
+
+    #[test]
+    fn explicit_sensitive_file_requires_opt_in() {
+        let temp = tempdir().unwrap();
+        let file = temp.path().join(".env");
+        fs::write(&file, "TOKEN=secret-value\n").unwrap();
+
+        let error = read_source(Some(&file)).unwrap_err();
+
+        assert!(error.to_string().contains("--include-sensitive"));
     }
 
     #[test]
@@ -384,7 +513,19 @@ mod tests {
 
         let error = read_source(Some(&temp.path().join(".ssh"))).unwrap_err();
 
-        assert!(error.to_string().contains("no readable text files found"));
+        assert!(error.to_string().contains("--include-sensitive"));
+    }
+
+    #[test]
+    fn directory_reader_rejects_generated_root_directories() {
+        let temp = tempdir().unwrap();
+        let generated = temp.path().join("node_modules");
+        fs::create_dir_all(&generated).unwrap();
+        fs::write(generated.join("package.txt"), "SHOULD_NOT_READ").unwrap();
+
+        let error = read_source(Some(&generated)).unwrap_err();
+
+        assert!(error.to_string().contains("generated input is skipped"));
     }
 
     #[test]

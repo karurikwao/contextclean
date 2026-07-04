@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
-use clap::{Parser, ValueEnum};
-use contextclean_core::{CleanMode, OutputFormat};
+use clap::{Args, Parser, Subcommand, ValueEnum};
+use contextclean_core::{CleanMode, FitModel, OutputFormat, MIN_EXPLAINABLE_TRUNCATION_TOKENS};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -11,16 +11,50 @@ use contextclean_core::{CleanMode, OutputFormat};
     long_about = "ContextClean strips obvious context noise, redacts secret-like values, and emits token-budget-aware text, markdown, or JSON for AI agent workflows."
 )]
 pub struct Cli {
+    #[command(subcommand)]
+    pub command: Option<CliCommand>,
+
+    #[command(flatten)]
+    pub clean: CleanArgs,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum CliCommand {
+    /// Explain token savings, removed sections, and recommended cleanup command.
+    Report(ReportArgs),
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct CleanArgs {
     /// File, directory, or '-' to read from stdin. If omitted, ctxclean reads piped stdin.
     pub input: Option<PathBuf>,
 
-    /// Write cleaned output to a file instead of stdout.
+    #[command(flatten)]
+    pub options: SharedArgs,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct ReportArgs {
+    /// File, directory, or '-' to analyze for a context report.
+    pub input: PathBuf,
+
+    #[command(flatten)]
+    pub options: SharedArgs,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct SharedArgs {
+    /// Write output to a file instead of stdout.
     #[arg(short = 'o', long = "output", visible_alias = "out")]
     pub output: Option<PathBuf>,
 
-    /// Hard ceiling for estimated output tokens. Defaults to unlimited.
+    /// Hard ceiling for output content tokens. Defaults to unlimited unless --fit is provided.
     #[arg(short = 't', long = "max-tokens", value_parser = parse_positive_usize)]
     pub max_tokens: Option<usize>,
+
+    /// Fit output for a known model budget.
+    #[arg(long = "fit", value_enum)]
+    pub fit: Option<CliFit>,
 
     /// Optimization depth.
     #[arg(short = 'm', long = "mode", value_enum, default_value_t = CliMode::Standard)]
@@ -38,9 +72,17 @@ pub struct Cli {
     #[arg(long)]
     pub dry_run: bool,
 
+    /// Keep default secret redaction enabled explicitly.
+    #[arg(long)]
+    pub redact_secrets: bool,
+
     /// Disable defensive redaction of secret-like values.
     #[arg(long)]
     pub no_redact_secrets: bool,
+
+    /// Include sensitive paths such as .env files, private keys, and credential dirs.
+    #[arg(long)]
+    pub include_sensitive: bool,
 
     /// Overwrite output file if it exists.
     #[arg(long)]
@@ -57,10 +99,38 @@ pub struct Cli {
 
 impl Cli {
     pub fn validate(&self) -> Result<(), String> {
+        match &self.command {
+            Some(CliCommand::Report(report)) => report.options.validate(),
+            None => self.clean.options.validate(),
+        }
+    }
+}
+
+impl SharedArgs {
+    pub fn validate(&self) -> Result<(), String> {
         if self.quiet && self.verbose {
             return Err("--quiet and --verbose cannot be used together".to_string());
         }
+        if self.redact_secrets && self.no_redact_secrets {
+            return Err(
+                "--redact-secrets and --no-redact-secrets cannot be used together".to_string(),
+            );
+        }
+        if let (Some(fit), Some(max_tokens)) = (self.fit, self.max_tokens) {
+            let preset = FitModel::from(fit).max_tokens();
+            if max_tokens > preset {
+                return Err(format!(
+                    "--max-tokens {max_tokens} exceeds --fit {} preset limit of {preset}",
+                    FitModel::from(fit).label()
+                ));
+            }
+        }
         Ok(())
+    }
+
+    pub fn effective_max_tokens(&self) -> Option<usize> {
+        self.max_tokens
+            .or_else(|| self.fit.map(|fit| FitModel::from(fit).max_tokens()))
     }
 }
 
@@ -98,12 +168,36 @@ impl From<CliFormat> for OutputFormat {
     }
 }
 
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum CliFit {
+    #[value(name = "gpt-4.1")]
+    Gpt41,
+    #[value(name = "claude-sonnet")]
+    ClaudeSonnet,
+    #[value(name = "gemini-pro")]
+    GeminiPro,
+}
+
+impl From<CliFit> for FitModel {
+    fn from(value: CliFit) -> Self {
+        match value {
+            CliFit::Gpt41 => Self::Gpt41,
+            CliFit::ClaudeSonnet => Self::ClaudeSonnet,
+            CliFit::GeminiPro => Self::GeminiPro,
+        }
+    }
+}
+
 fn parse_positive_usize(value: &str) -> Result<usize, String> {
     let parsed = value
         .parse::<usize>()
         .map_err(|_| "must be a positive integer".to_string())?;
     if parsed == 0 {
         Err("must be greater than 0".to_string())
+    } else if parsed < MIN_EXPLAINABLE_TRUNCATION_TOKENS {
+        Err(format!(
+            "must be at least {MIN_EXPLAINABLE_TRUNCATION_TOKENS} so truncation can be explained"
+        ))
     } else {
         Ok(parsed)
     }

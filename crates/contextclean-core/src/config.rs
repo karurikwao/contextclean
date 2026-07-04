@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::budget::FitModel;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CleanMode {
@@ -21,6 +23,7 @@ pub struct CleanOptions {
     pub mode: CleanMode,
     pub format: OutputFormat,
     pub max_tokens: Option<usize>,
+    pub fit: Option<FitModel>,
     pub strip_comments: bool,
     pub redact_secrets: bool,
     pub source_name: Option<String>,
@@ -32,6 +35,7 @@ impl Default for CleanOptions {
             mode: CleanMode::Standard,
             format: OutputFormat::Markdown,
             max_tokens: None,
+            fit: None,
             strip_comments: false,
             redact_secrets: true,
             source_name: None,

@@ -12,13 +12,27 @@ The current implementation redacts:
 - sensitive URL query parameters preserved from HTML links, such as `token`, `signature`, `X-Amz-Signature`, and `access_token`
 - bearer tokens
 - JWT-like values
+- common provider tokens such as OpenAI-style `sk-...`, GitHub `ghp_...` and `github_pat_...`, Slack `xox...`, AWS access key ids, and npm tokens
 
 ## Guarantees
 
 - Redaction runs before rendering.
 - Redacted values are replaced with `[REDACTED_SECRET]`.
+- Redaction is enabled by default; `--redact-secrets` is available as an explicit no-op for scripts that want to say the quiet part out loud.
 - Disabling redaction requires `--no-redact-secrets`.
 - The CLI warns when redaction is disabled unless `--quiet` is used.
+
+## Sensitive Paths
+
+Directory scans skip sensitive paths by default and include a warning in output. Explicit sensitive files and sensitive root directories fail unless `--include-sensitive` is supplied.
+
+Default sensitive path handling covers:
+
+- `.env`, `.env.*`, `.netrc`, `.npmrc`, `.pypirc`, cloud credential files, and local credential stores
+- `.ssh`, `.aws`, `.gcloud`, `.azure`, `.kube`, `.docker`, `.terraform`, and similar credential directories
+- private keys, certificate-like files, key stores, local databases, and SQLite files
+
+When `--include-sensitive` is used, ContextClean can read sensitive paths that are not excluded by `.gitignore`, global git excludes, or `.ctxcleanignore`. Secret-like values are still redacted unless `--no-redact-secrets` is also supplied.
 
 ## Limitations
 

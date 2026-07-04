@@ -14,11 +14,7 @@ fn fixture_path(name: &str) -> PathBuf {
 
 fn estimated_tokens(bytes: &[u8]) -> usize {
     let text = String::from_utf8_lossy(bytes);
-    if text.is_empty() {
-        0
-    } else {
-        text.chars().count().div_ceil(4)
-    }
+    contextclean_core::count_tokens(&text)
 }
 
 fn json_array_has_kind(parsed: &Value, array_name: &str, kind: &str) -> bool {
@@ -47,6 +43,10 @@ fn help_starts_successfully() {
         .stdout(predicate::str::contains("ContextClean strips"))
         .stdout(predicate::str::contains("--format"))
         .stdout(predicate::str::contains("--max-tokens"))
+        .stdout(predicate::str::contains("--fit"))
+        .stdout(predicate::str::contains("report"))
+        .stdout(predicate::str::contains("--include-sensitive"))
+        .stdout(predicate::str::contains("--redact-secrets"))
         .stdout(predicate::str::contains("--no-redact-secrets"));
 }
 
@@ -240,7 +240,7 @@ fn committed_log_fixture_smokes_with_truncation_json() {
     let removed = parsed["truncation"]["tokens_removed"].as_u64().unwrap();
     let content = parsed["output"]["content"].as_str().unwrap();
     if content.contains("Removed ") {
-        assert!(content.contains(&format!("Removed {removed} estimated tokens")));
+        assert!(content.contains(&format!("Removed {removed} tokens")));
     }
 }
 
@@ -352,6 +352,44 @@ fn markdown_max_tokens_caps_rendered_output() {
         .clone();
 
     assert!(estimated_tokens(&output) <= 40);
+    assert!(String::from_utf8_lossy(&output).contains("Context Truncated"));
+}
+
+#[test]
+fn fit_model_sets_budget_metadata() {
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    let output = command
+        .arg(fixture_path("dirty_html_small.html"))
+        .arg("--fit")
+        .arg("gpt-4.1")
+        .arg("--format")
+        .arg("json")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let parsed: Value = serde_json::from_slice(&output).unwrap();
+
+    assert_eq!(parsed["budget"]["fit"], "gpt-4.1");
+    assert_eq!(parsed["budget"]["model_id"], "gpt-4.1");
+    assert_eq!(parsed["budget"]["tokenizer"], "o200k_base");
+    assert_eq!(parsed["budget"]["effective_limit_tokens"], 1_047_576);
+}
+
+#[test]
+fn fit_rejects_budget_above_preset() {
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    command
+        .arg(fixture_path("dirty_html_small.html"))
+        .arg("--fit")
+        .arg("gpt-4.1")
+        .arg("--max-tokens")
+        .arg("1047577")
+        .assert()
+        .failure()
+        .code(2)
+        .stderr(predicate::str::contains("exceeds --fit gpt-4.1"));
 }
 
 #[test]
@@ -367,6 +405,82 @@ fn directory_fixture_skips_sensitive_files() {
         .stdout(predicate::str::contains("hello from fixture"))
         .stdout(predicate::str::contains(".env.example").not())
         .stdout(predicate::str::contains("fixture-fake-secret-value").not());
+}
+
+#[test]
+fn include_sensitive_opt_in_includes_then_redacts_sensitive_files() {
+    let temp = tempdir().unwrap();
+    fs::create_dir_all(temp.path().join("src")).unwrap();
+    fs::write(temp.path().join("src/keep.txt"), "KEEP_SENTINEL").unwrap();
+    fs::write(
+        temp.path().join(".env"),
+        "API_KEY=sk-abcdefghijklmnopqrstuvwx",
+    )
+    .unwrap();
+
+    let mut default_command = Command::cargo_bin("ctxclean").unwrap();
+    let default_output = default_command
+        .arg(temp.path())
+        .arg("--format")
+        .arg("json")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let parsed: Value = serde_json::from_slice(&default_output).unwrap();
+    assert!(json_array_has_warning(&parsed, "sensitive_path_skipped"));
+    assert!(!parsed["output"]["content"]
+        .as_str()
+        .unwrap()
+        .contains(".env"));
+
+    let mut include_command = Command::cargo_bin("ctxclean").unwrap();
+    let include_output = include_command
+        .arg(temp.path())
+        .arg("--include-sensitive")
+        .arg("--format")
+        .arg("json")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let parsed: Value = serde_json::from_slice(&include_output).unwrap();
+    let content = parsed["output"]["content"].as_str().unwrap();
+    assert!(content.contains(".env"));
+    assert!(content.contains("[REDACTED_SECRET]"));
+    assert!(!content.contains("sk-abcdefghijklmnopqrstuvwx"));
+}
+
+#[test]
+fn explicit_sensitive_file_requires_include_sensitive() {
+    let temp = tempdir().unwrap();
+    let input = temp.path().join(".env");
+    fs::write(&input, "API_KEY=sk-abcdefghijklmnopqrstuvwx").unwrap();
+
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    command
+        .arg(&input)
+        .assert()
+        .failure()
+        .code(3)
+        .stderr(predicate::str::contains("--include-sensitive"));
+}
+
+#[test]
+fn redact_secret_flags_conflict() {
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    command
+        .arg("--redact-secrets")
+        .arg("--no-redact-secrets")
+        .write_stdin("hello")
+        .assert()
+        .failure()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "--redact-secrets and --no-redact-secrets cannot be used together",
+        ));
 }
 
 #[test]
@@ -498,6 +612,19 @@ fn max_tokens_zero_is_rejected() {
 }
 
 #[test]
+fn max_tokens_too_small_to_explain_truncation_is_rejected() {
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    command
+        .arg("--max-tokens")
+        .arg("4")
+        .write_stdin("hello")
+        .assert()
+        .failure()
+        .code(2)
+        .stderr(predicate::str::contains("truncation can be explained"));
+}
+
+#[test]
 fn cli_redacts_by_default() {
     let temp = tempdir().unwrap();
     let input = temp.path().join("input.txt");
@@ -617,6 +744,113 @@ fn directory_scan_skips_hidden_credential_files_by_default() {
         .stdout(predicate::str::contains("KEEP_SENTINEL"))
         .stdout(predicate::str::contains("netrcSecretValue123").not())
         .stdout(predicate::str::contains("awsSecretValue123456").not());
+}
+
+#[test]
+fn report_json_includes_required_fields() {
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    let output = command
+        .arg("report")
+        .arg(fixture_path("ci_failure_log.txt"))
+        .arg("--max-tokens")
+        .arg("80")
+        .arg("--format")
+        .arg("json")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let parsed: Value = serde_json::from_slice(&output).unwrap();
+
+    assert!(parsed["tokens"]["input"].as_u64().unwrap() > 0);
+    assert!(parsed["tokens"]["output"].as_u64().unwrap() <= 80);
+    assert!(!parsed["biggest_noise_sources"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+    assert!(!parsed["removed_section_summary"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+    assert!(parsed["recommended_command"]
+        .as_str()
+        .unwrap()
+        .contains("ctxclean"));
+    assert!(parsed["biggest_noise_sources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|source| source["kind"].as_str().unwrap().contains('_')
+            || matches!(
+                source["kind"].as_str().unwrap(),
+                "repetition" | "secret" | "truncation" | "other"
+            )));
+}
+
+#[test]
+fn report_markdown_has_summary_sections_without_cleaned_content() {
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    command
+        .arg("report")
+        .arg(fixture_path("ci_failure_log.txt"))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("# ContextClean Report"))
+        .stdout(predicate::str::contains("Token Summary"))
+        .stdout(predicate::str::contains("Biggest Noise Sources"))
+        .stdout(predicate::str::contains("Recommended Command"))
+        .stdout(predicate::str::contains("TypeError").not());
+}
+
+#[test]
+fn report_text_includes_removed_summary_and_warnings() {
+    let temp = tempdir().unwrap();
+    fs::create_dir_all(temp.path().join("src")).unwrap();
+    fs::write(temp.path().join("src/keep.txt"), "KEEP_SENTINEL").unwrap();
+    fs::write(
+        temp.path().join(".env"),
+        "API_KEY=sk-abcdefghijklmnopqrstuvwx",
+    )
+    .unwrap();
+
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    command
+        .arg("report")
+        .arg(temp.path())
+        .arg("--format")
+        .arg("text")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("removed_section_summary:"))
+        .stdout(predicate::str::contains("warnings:"))
+        .stdout(predicate::str::contains("sensitive_path_skipped"));
+}
+
+#[test]
+fn report_recommended_command_preserves_include_sensitive() {
+    let temp = tempdir().unwrap();
+    let input = temp.path().join(".env");
+    fs::write(&input, "API_KEY=sk-abcdefghijklmnopqrstuvwx").unwrap();
+
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    let output = command
+        .arg("report")
+        .arg(&input)
+        .arg("--include-sensitive")
+        .arg("--format")
+        .arg("json")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let parsed: Value = serde_json::from_slice(&output).unwrap();
+
+    assert!(parsed["recommended_command"]
+        .as_str()
+        .unwrap()
+        .contains("--include-sensitive"));
 }
 
 #[test]

@@ -13,6 +13,7 @@ ContextClean is designed to run locally. The current local CLI contains no telem
 - Secret-like values are redacted by default.
 - Common sensitive files and generated folders are skipped in directory scans.
 - `.gitignore` and `.ctxcleanignore` are respected for directory scans.
+- Sensitive files and credential directories require explicit `--include-sensitive` opt-in.
 - `--no-redact-secrets` is an explicit unsafe override.
 
 ## Reporting A Vulnerability

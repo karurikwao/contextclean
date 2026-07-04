@@ -38,7 +38,8 @@ This wastes context windows, increases LLM cost, and raises the risk of leaking 
 2. Compress a noisy CI or application log while preserving the real failure.
 3. Scan a project directory and produce safe, reviewable context.
 4. Fit cleaned context into an explicit model budget.
-5. Generate JSON metrics for automation and future reporting.
+5. Generate JSON metrics for automation.
+6. Run `ctxclean report` to explain token savings, biggest noise sources, and the recommended cleanup command.
 
 ## Success Criteria
 
@@ -51,7 +52,5 @@ This wastes context windows, increases LLM cost, and raises the risk of leaking 
 
 ## Open Product Questions
 
-- Which exact tokenizer crates should V1 use for `cl100k_base` and `o200k_base`?
-- Should context reports be a subcommand or a format mode?
 - How much AST-aware code compression belongs in V1 versus V2?
 - Which MCP client should be the first integration target?

@@ -8,7 +8,10 @@
 - Output to stdout or `--output`.
 - `--mode light|standard|aggressive`.
 - `--format text|markdown|json`.
-- `--max-tokens` using deterministic estimated token budgeting.
+- Exact token counting with the OpenAI-compatible `o200k_base` tokenizer.
+- `--max-tokens` using deterministic token-budget packing.
+- `--fit gpt-4.1|claude-sonnet|gemini-pro` model presets.
+- `ctxclean report <INPUT>` for token savings, compression ratio, biggest noise sources, removed section summary, and recommended command.
 - `--strip-comments` for obvious line comments.
 - HTML execution block removal: `script`, `style`, and `noscript`.
 - Standard HTML boilerplate removal: `nav`, `footer`, `aside`, `svg`, comments, cookie/newsletter/ad/modal/tracking blocks, and short high-confidence boilerplate lines.
@@ -16,6 +19,7 @@
 - Log Crusher compression for repeated lines, timestamped retries, duplicate stack frames, and safe install/build noise.
 - Preservation of unique errors, failed test names, failure summaries, stack roots, and timestamps around failures.
 - Secret-like value redaction by default.
+- `--redact-secrets`, `--no-redact-secrets`, and `--include-sensitive` safety controls.
 - `.gitignore` and `.ctxcleanignore` aware directory scanning.
 - Default skips for sensitive/generated paths.
 - Tests for CLI startup, output formats, cleaner behavior, redaction, and directory safety.
@@ -33,7 +37,6 @@
 - No AST-aware code understanding yet.
 - No fully parser-backed HTML DOM cleanup yet.
 - No provider-specific CI log parser yet.
-- No exact tokenizer guarantee until tokenizer crates are selected.
 - No plugin system.
 - No background daemon or file watcher.
 - No mutation of input files.

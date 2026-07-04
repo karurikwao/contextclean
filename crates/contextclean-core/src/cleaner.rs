@@ -3,12 +3,14 @@ use std::time::Instant;
 
 use regex::Regex;
 
+use crate::budget::{count_tokens, pack_to_budget, tokenizer_name};
 use crate::config::{CleanMode, CleanOptions};
 use crate::html::{html_to_readable_content, remove_html_noise_blocks};
 use crate::logs::crush_logs;
 use crate::models::{
-    CleanResult, InputStats, Metadata, Metrics, NoiseSource, NoiseSourceKind, OutputBlock,
-    RemovedSection, RemovedSectionKind, Truncation, Warning, WarningSeverity,
+    Budget, BudgetLimitSource, CleanResult, InputStats, Metadata, Metrics, NoiseSource,
+    NoiseSourceKind, OutputBlock, RemovedSection, RemovedSectionKind, Truncation, Warning,
+    WarningSeverity,
 };
 
 pub fn clean_text(input: &str, options: &CleanOptions) -> CleanResult {
@@ -100,13 +102,24 @@ pub fn clean_text(input: &str, options: &CleanOptions) -> CleanResult {
     };
 
     if let Some(max_tokens) = options.max_tokens {
-        content = truncate_to_budget(
-            &content,
-            max_tokens,
-            &mut truncation,
-            &mut removed_sections,
-            &mut noise_sources,
-        );
+        let packed = pack_to_budget(&content, max_tokens);
+        if packed.applied {
+            truncation.applied = true;
+            truncation.tokens_removed = packed.tokens_removed;
+            truncation.reason = Some(budget_reason(options));
+            removed_sections.push(RemovedSection {
+                kind: RemovedSectionKind::Truncated,
+                label: "token budget truncation".to_string(),
+                tokens_removed: packed.tokens_removed,
+                count: 1,
+            });
+            noise_sources.push(NoiseSource {
+                kind: NoiseSourceKind::Truncation,
+                label: "token budget truncation".to_string(),
+                tokens_removed: packed.tokens_removed,
+            });
+            content = packed.content;
+        }
     }
 
     content = collapse_blank_lines(&content).trim().to_string();
@@ -127,6 +140,7 @@ pub fn clean_text(input: &str, options: &CleanOptions) -> CleanResult {
             content,
         },
         metrics,
+        budget: budget_for(options),
         truncation,
         removed_sections,
         noise_sources,
@@ -142,7 +156,39 @@ fn stats_for(input: &str) -> InputStats {
     InputStats {
         bytes: input.len(),
         chars: input.chars().count(),
-        tokens: estimate_tokens(input),
+        tokens: count_tokens(input),
+    }
+}
+
+fn budget_for(options: &CleanOptions) -> Budget {
+    let limit_source = match (options.fit, options.max_tokens) {
+        (None, None) => BudgetLimitSource::None,
+        (None, Some(_)) => BudgetLimitSource::MaxTokens,
+        (Some(_), None) => BudgetLimitSource::Fit,
+        (Some(fit), Some(limit)) if limit == fit.max_tokens() => BudgetLimitSource::Fit,
+        (Some(_), Some(_)) => BudgetLimitSource::FitAndMaxTokens,
+    };
+
+    Budget {
+        fit: options.fit,
+        model_id: options.fit.map(|fit| fit.model_id().to_string()),
+        tokenizer: tokenizer_name().to_string(),
+        token_count_is_exact: true,
+        preset_limit_tokens: options.fit.map(|fit| fit.max_tokens()),
+        effective_limit_tokens: options.max_tokens,
+        model_max_output_tokens: options.fit.map(|fit| fit.max_output_tokens()),
+        limit_source,
+    }
+}
+
+fn budget_reason(options: &CleanOptions) -> String {
+    match (options.fit, options.max_tokens) {
+        (Some(fit), Some(limit)) if limit == fit.max_tokens() => {
+            format!("fit {} budget", fit.label())
+        }
+        (Some(fit), Some(_)) => format!("fit {} and max_tokens budget", fit.label()),
+        (Some(fit), None) => format!("fit {} budget", fit.label()),
+        _ => "max_tokens budget".to_string(),
     }
 }
 
@@ -416,6 +462,7 @@ fn redact_secrets(
         url_query_secret_regex(),
         bearer_token_regex(),
         jwt_regex(),
+        provider_token_regex(),
     ] {
         let matches = regex.find_iter(&content).count();
         if matches > 0 {
@@ -478,95 +525,6 @@ fn drop_aggressive_noise(input: &str, removed_sections: &mut Vec<RemovedSection>
     }
 
     kept.join("\n")
-}
-
-fn truncate_to_budget(
-    input: &str,
-    max_tokens: usize,
-    truncation: &mut Truncation,
-    removed_sections: &mut Vec<RemovedSection>,
-    noise_sources: &mut Vec<NoiseSource>,
-) -> String {
-    let current_tokens = estimate_tokens(input);
-    if max_tokens == 0 {
-        truncation.applied = true;
-        truncation.tokens_removed = current_tokens;
-        truncation.reason = Some("max_tokens budget".to_string());
-        removed_sections.push(RemovedSection {
-            kind: RemovedSectionKind::Truncated,
-            label: "token budget truncation".to_string(),
-            tokens_removed: current_tokens,
-            count: 1,
-        });
-        noise_sources.push(NoiseSource {
-            kind: NoiseSourceKind::Truncation,
-            label: "token budget truncation".to_string(),
-            tokens_removed: current_tokens,
-        });
-        return String::new();
-    }
-
-    if current_tokens <= max_tokens {
-        return input.to_string();
-    }
-
-    let short_footer = "\n\n[Context Truncated]".to_string();
-    let content_budget_tokens = max_tokens.saturating_sub(estimate_tokens(&short_footer));
-    let mut kept: String = input
-        .chars()
-        .take(content_budget_tokens.saturating_mul(4))
-        .collect();
-
-    if let Some(paragraph_boundary) = kept.rfind("\n\n") {
-        kept.truncate(paragraph_boundary);
-    } else if let Some(line_boundary) = kept.rfind('\n') {
-        kept.truncate(line_boundary);
-    }
-
-    let (candidate, removed_tokens) = loop {
-        let body = kept.trim_end();
-        let removed_tokens = current_tokens.saturating_sub(estimate_tokens(body));
-        let full_footer = format!(
-            "\n\n[Context Truncated: Removed {removed_tokens} estimated tokens to fit {max_tokens} token budget]"
-        );
-        let footer = if estimate_tokens(&full_footer) < max_tokens {
-            full_footer
-        } else {
-            short_footer.clone()
-        };
-        let candidate = format!("{body}{footer}");
-        if estimate_tokens(&candidate) <= max_tokens {
-            break (candidate, removed_tokens);
-        }
-        if kept.is_empty() {
-            break (
-                fit_to_estimated_tokens("[Context Truncated]", max_tokens),
-                current_tokens,
-            );
-        }
-        kept.pop();
-    };
-
-    truncation.applied = true;
-    truncation.tokens_removed = removed_tokens;
-    truncation.reason = Some("max_tokens budget".to_string());
-    removed_sections.push(RemovedSection {
-        kind: RemovedSectionKind::Truncated,
-        label: "token budget truncation".to_string(),
-        tokens_removed: removed_tokens,
-        count: 1,
-    });
-    noise_sources.push(NoiseSource {
-        kind: NoiseSourceKind::Truncation,
-        label: "token budget truncation".to_string(),
-        tokens_removed: removed_tokens,
-    });
-
-    candidate
-}
-
-fn fit_to_estimated_tokens(input: &str, max_tokens: usize) -> String {
-    input.chars().take(max_tokens.saturating_mul(4)).collect()
 }
 
 fn script_regex() -> &'static Regex {
@@ -666,6 +624,16 @@ fn jwt_regex() -> &'static Regex {
     })
 }
 
+fn provider_token_regex() -> &'static Regex {
+    static REGEX: OnceLock<Regex> = OnceLock::new();
+    REGEX.get_or_init(|| {
+        Regex::new(
+            r"\b(?:sk-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{20,}|AKIA[0-9A-Z]{16}|npm_[A-Za-z0-9]{20,})\b",
+        )
+        .expect("valid regex")
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -676,6 +644,7 @@ mod tests {
             mode,
             format: OutputFormat::Markdown,
             max_tokens: None,
+            fit: None,
             strip_comments: false,
             redact_secrets: true,
             source_name: None,
@@ -785,6 +754,50 @@ mod tests {
     }
 
     #[test]
+    fn redacts_standalone_provider_tokens() {
+        let input = "\
+OpenAI sk-abcdefghijklmnopqrstuvwx
+GitHub ghp_abcdefghijklmnopqrstuvwx
+GitHubPat github_pat_abcdefghijklmnopqrstuvwx
+Slack xoxb-abcdefghijklmnopqrstuvwx
+AWS AKIAABCDEFGHIJKLMNOP
+npm npm_abcdefghijklmnopqrstuvwx
+";
+
+        let result = clean_text(input, &options(CleanMode::Standard));
+
+        assert_eq!(
+            result.output.content.matches("[REDACTED_SECRET]").count(),
+            6
+        );
+        assert!(!result
+            .output
+            .content
+            .contains("sk-abcdefghijklmnopqrstuvwx"));
+        assert!(!result
+            .output
+            .content
+            .contains("ghp_abcdefghijklmnopqrstuvwx"));
+        assert!(!result
+            .output
+            .content
+            .contains("github_pat_abcdefghijklmnopqrstuvwx"));
+        assert!(!result
+            .output
+            .content
+            .contains("xoxb-abcdefghijklmnopqrstuvwx"));
+        assert!(!result.output.content.contains("AKIAABCDEFGHIJKLMNOP"));
+        assert!(!result
+            .output
+            .content
+            .contains("npm_abcdefghijklmnopqrstuvwx"));
+        assert!(result
+            .warnings
+            .iter()
+            .any(|warning| warning.code == "secrets_redacted"));
+    }
+
+    #[test]
     fn max_tokens_applies_truncation_footer() {
         let input = "paragraph one\n\nparagraph two with lots and lots and lots and lots of words\n\nparagraph three";
         let mut opts = options(CleanMode::Standard);
@@ -797,7 +810,7 @@ mod tests {
         assert!(result.output.tokens <= 12);
         if result.output.content.contains("Removed ") {
             assert!(result.output.content.contains(&format!(
-                "Removed {} estimated tokens",
+                "Removed {} tokens",
                 result.truncation.tokens_removed
             )));
         }
