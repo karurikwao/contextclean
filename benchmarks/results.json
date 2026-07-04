@@ -1,5 +1,5 @@
 {
-    "generated_at":  "2026-07-04T17:28:01Z",
+    "generated_at":  "2026-07-04T21:01:22Z",
     "tokenizer":  "o200k_base",
     "binary":  "target/release/ctxclean",
     "results":  [
@@ -8,9 +8,9 @@
                         "fixture":  "benchmarks/fixtures/html_scrape_large.html",
                         "command":  "ctxclean benchmarks/fixtures/html_scrape_large.html --mode standard --max-tokens 5900 --format json --quiet",
                         "input_tokens":  70571,
-                        "output_tokens":  5874,
-                        "tokens_saved":  64697,
-                        "reduction_percent":  91.6764676708563,
+                        "output_tokens":  5892,
+                        "tokens_saved":  64679,
+                        "reduction_percent":  91.650961443085677,
                         "removed_section_kinds":  [
                                                       "html_boilerplate",
                                                       "html_execution_block",
@@ -102,6 +102,80 @@
                                    ]
                     },
                     {
+                        "name":  "Provider CI mix",
+                        "fixture":  "benchmarks/fixtures/provider_ci_mix.log",
+                        "command":  "ctxclean benchmarks/fixtures/provider_ci_mix.log --mode aggressive --max-tokens 1600 --format json --quiet",
+                        "input_tokens":  17469,
+                        "output_tokens":  33,
+                        "tokens_saved":  17436,
+                        "reduction_percent":  99.811093937832723,
+                        "removed_section_kinds":  [
+                                                      "log_noise"
+                                                  ],
+                        "warnings":  [
+
+                                     ],
+                        "truncation_applied":  false,
+                        "recommended_command":  "ctxclean gha benchmarks/fixtures/provider_ci_mix.log --max-tokens 1600 --format markdown",
+                        "checks":  [
+                                       {
+                                           "type":  "must_contain",
+                                           "value":  "FAIL packages/api/user.test.ts",
+                                           "passed":  true
+                                       },
+                                       {
+                                           "type":  "must_contain",
+                                           "value":  "tests/test_api.py::test_user FAILED",
+                                           "passed":  true
+                                       },
+                                       {
+                                           "type":  "must_contain",
+                                           "value":  "KEEP_PROVIDER_FAILURE",
+                                           "passed":  true
+                                       },
+                                       {
+                                           "type":  "must_contain",
+                                           "value":  "Final error summary",
+                                           "passed":  true
+                                       },
+                                       {
+                                           "type":  "must_not_contain",
+                                           "value":  "npm http fetch",
+                                           "passed":  true
+                                       },
+                                       {
+                                           "type":  "must_not_contain",
+                                           "value":  "npm WARN deprecated",
+                                           "passed":  true
+                                       },
+                                       {
+                                           "type":  "must_not_contain",
+                                           "value":  "Progress: resolved",
+                                           "passed":  true
+                                       },
+                                       {
+                                           "type":  "must_not_contain",
+                                           "value":  "Downloaded crate_",
+                                           "passed":  true
+                                       },
+                                       {
+                                           "type":  "must_not_contain",
+                                           "value":  "Compiling crate_",
+                                           "passed":  true
+                                       },
+                                       {
+                                           "type":  "must_not_contain",
+                                           "value":  "[internal] load build definition",
+                                           "passed":  true
+                                       },
+                                       {
+                                           "type":  "must_not_contain",
+                                           "value":  "[chromium]",
+                                           "passed":  true
+                                       }
+                                   ]
+                    },
+                    {
                         "name":  "Stack trace dump",
                         "fixture":  "benchmarks/fixtures/stack_trace_dump_large.log",
                         "command":  "ctxclean benchmarks/fixtures/stack_trace_dump_large.log --mode standard --max-tokens 1850 --format json --quiet",
@@ -141,9 +215,9 @@
                         "fixture":  "fixtures/dirty_html_article.html",
                         "command":  "ctxclean fixtures/dirty_html_article.html --mode standard --format json --quiet",
                         "input_tokens":  371,
-                        "output_tokens":  105,
-                        "tokens_saved":  266,
-                        "reduction_percent":  71.698113207547181,
+                        "output_tokens":  97,
+                        "tokens_saved":  274,
+                        "reduction_percent":  73.8544474393531,
                         "removed_section_kinds":  [
                                                       "html_boilerplate",
                                                       "html_execution_block"

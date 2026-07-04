@@ -28,9 +28,10 @@ Current measured launch rows:
 
 | Fixture | Input tokens | Output tokens | Tokens saved | Reduction |
 |---|---:|---:|---:|---:|
-| HTML scrape | 70,571 | 5,874 | 64,697 | 91.7% |
+| HTML scrape | 70,571 | 5,892 | 64,679 | 91.7% |
 | CI failure log | 75,768 | 3,200 | 72,568 | 95.8% |
+| Provider CI mix | 17,469 | 33 | 17,436 | 99.8% |
 | Stack trace dump | 28,189 | 1,850 | 26,339 | 93.4% |
-| Dirty HTML article | 371 | 105 | 266 | 71.7% |
+| Dirty HTML article | 371 | 97 | 274 | 73.9% |
 
 Claims in the README and site should stay tied to `benchmarks/results.json`, not hand-maintained estimates.

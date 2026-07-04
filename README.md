@@ -21,10 +21,11 @@ Measured with `scripts/benchmarks.ps1`, the release `ctxclean` binary, and exact
 
 | Fixture | Before | After | Saved | Reduction |
 |---|---:|---:|---:|---:|
-| HTML scrape | 70,571 | 5,874 | 64,697 | 91.7% |
+| HTML scrape | 70,571 | 5,892 | 64,679 | 91.7% |
 | CI failure log | 75,768 | 3,200 | 72,568 | 95.8% |
+| Provider CI mix | 17,469 | 33 | 17,436 | 99.8% |
 | Stack trace dump | 28,189 | 1,850 | 26,339 | 93.4% |
-| Dirty HTML article | 371 | 105 | 266 | 71.7% |
+| Dirty HTML article | 371 | 97 | 274 | 73.9% |
 
 ## Why ContextClean?
 
@@ -35,12 +36,13 @@ ContextClean gives you a deterministic local first pass:
 - exact OpenAI-compatible token counting with `o200k_base`
 - model budgets through `--max-tokens` and `--fit gpt-4.1|claude-sonnet|gemini-pro`
 - HTML cleanup that preserves headings, links, paragraphs, tables, lists, and code blocks
-- log crushing that keeps failed tests, timestamps, unique errors, and final summaries
+- parser-backed malformed HTML cleanup that keeps nested lists, tables, and code readable
+- provider-specific log crushing for GitHub Actions, pytest, cargo, Docker Buildx, Playwright, pnpm, and npm noise
 - repo-aware scanning that respects `.gitignore` and `.ctxcleanignore`
 - secret-like value redaction enabled by default
 - reports that explain tokens saved, noise sources, removed sections, and the next command to run
 - stdio MCP mode for agent workflows
-- `ctxrun` for cleaning failed command output while preserving the child exit code
+- streaming `ctxrun` for cleaning failed command output while preserving the child exit code
 
 ## Install
 
@@ -143,6 +145,10 @@ Core options:
 - `ctxclean repo .`: safe repo context packer using the same ignore and redaction pipeline as the default cleaner.
 - `ctxclean mcp`: newline-delimited JSON-RPC MCP server over stdio with `contextclean_clean` and `contextclean_report` tools.
 - `ctxrun npm test`: command wrapper that passes successful output through unchanged, cleans failed output, and exits with the child exit code.
+- First-party GitHub Action wrapper: `uses: karurikwao/contextclean@main`.
+- MCP compatibility matrix: `docs/MCP_COMPATIBILITY.md`.
+- Homebrew direct-install and tap notes: `docs/HOMEBREW.md`.
+- Python wrapper scaffold: `packages/python`.
 - Examples for Claude/Cursor/Codex, GitHub Actions, MCP clients, LangChain, and LlamaIndex live in `examples/`.
 
 ## JSON Shape
@@ -230,18 +236,18 @@ Outputs:
 ## Roadmap
 
 - V0.1.0: HTML cleaner, log crusher, token budgets, reports, repo safety, MCP stdio, `ctxrun`, launch benchmarks.
-- V0.2.0: parser-backed HTML/Markdown hardening and provider-specific CI log distillers.
-- V0.3.0: GitHub Action wrapper, Homebrew formula, shell completions, and richer release binaries.
-- V0.4.0: Python package and LangChain/LlamaIndex helper packages.
-- V0.5.0: AST-aware code compression and MCP compatibility matrix.
+- V0.1.x: parser-backed malformed HTML handling, provider CI distillers, streaming `ctxrun`, first-party action, MCP matrix, Homebrew direct-install notes, and Python wrapper scaffold.
+- V0.2.0: versioned GitHub Action tag, published Homebrew tap, shell completions, and richer release binaries.
+- V0.3.0: published Python package and deeper LangChain/LlamaIndex adapters.
+- V0.4.0: AST-aware code compression behind explicit flags.
 
 ## Good First Issues
 
 - Add a real-world GitHub Actions fixture from a public failing workflow.
-- Add a malformed HTML fixture that currently needs parser-backed cleanup.
+- Add more malformed HTML fixtures from browser exports and docs sites.
 - Add shell completions for Bash, Zsh, Fish, and PowerShell.
-- Add a Homebrew formula draft.
-- Add more MCP client config examples.
+- Turn `docs/HOMEBREW.md` into a published tap.
+- Validate more MCP clients and update `docs/MCP_COMPATIBILITY.md`.
 - Add benchmark fixtures for Docker Buildx, pytest, cargo, and Playwright logs.
 
 ## Development

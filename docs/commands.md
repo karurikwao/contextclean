@@ -95,6 +95,7 @@ It reuses the same directory reader as the default command: `.gitignore`, global
 ## MCP Server Mode
 
 `ctxclean mcp` starts a stdio JSON-RPC MCP server. Stdout contains protocol messages only.
+See `docs/MCP_COMPATIBILITY.md` for Claude Desktop, Cursor, Codex, VS Code MCP client, and generic stdio client configuration examples.
 
 Supported methods:
 
@@ -120,9 +121,17 @@ Tool arguments accept `text` or `path`, plus `mode`, `format`, `maxTokens`, `fit
 ctxrun --max-tokens 8000 npm test
 ctxrun --format markdown pytest
 ctxrun --max-tokens 6000 cargo test -p contextclean-core
+ctxrun --capture-limit-bytes 4194304 --timeout-seconds 120 npm test
 ```
 
-`ctxrun` options apply only to cleaned failure output; success output is not redacted or rewritten.
+`ctxrun` drains stdout and stderr concurrently to avoid pipe deadlocks. Successful commands replay captured stdout and stderr without cleaning. Failed commands are cleaned with ContextClean and keep the child exit code.
+
+Capture controls:
+
+- `--capture-limit-bytes <N>` retains up to `N` bytes from each child stream while still draining the full pipe. The default is 4 MiB per stream.
+- `--timeout-seconds <N>` kills the child after `N` seconds, cleans whatever was captured, and exits `124`.
+
+If either stream exceeds the capture limit, the cleaned failure output includes a footer such as `[ctxrun: stdout truncated after 4194304 bytes]`. Increase the limit for very large success-output commands that must be replayed in full.
 
 ## Safety Flags
 

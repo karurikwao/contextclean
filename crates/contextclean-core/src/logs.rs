@@ -286,12 +286,22 @@ fn is_install_noise(line: &str, mode: CleanMode) -> bool {
 
     let standard_noise = npm_summary_regex().is_match(&lower)
         || lower.starts_with("npm notice")
+        || npm_fetch_regex().is_match(&lower)
+        || npm_deprecated_regex().is_match(&lower)
+        || pnpm_progress_regex().is_match(&lower)
+        || pnpm_summary_regex().is_match(&lower)
         || cargo_download_regex().is_match(&lower)
         || lower.starts_with("installing component ")
         || lower.starts_with("installing collected packages:")
+        || lower.starts_with("successfully installed ")
         || lower.starts_with("resolving deltas:")
         || lower.starts_with("receiving objects:")
-        || lower.starts_with("remote: counting objects:");
+        || lower.starts_with("remote: counting objects:")
+        || github_actions_group_regex().is_match(&lower)
+        || pytest_collect_regex().is_match(&lower)
+        || pytest_passed_progress_regex().is_match(&lower)
+        || docker_buildx_noise_regex().is_match(&lower)
+        || playwright_noise_regex().is_match(&lower);
 
     let aggressive_noise = standard_noise
         || cargo_compile_regex().is_match(&lower)
@@ -326,9 +336,15 @@ fn is_signal_line(line: &str) -> bool {
         || lower.contains("exception")
         || lower.contains("typeerror")
         || lower.contains("assertion")
+        || lower.starts_with("fail ")
+        || lower.starts_with("fail\t")
+        || lower.starts_with("fail:")
+        || lower.contains(" fail ")
         || lower.contains("test result:")
         || lower.contains("tests failed")
         || lower.contains("failures:")
+        || lower.contains("failed tests")
+        || lower.contains("final error summary")
 }
 
 fn estimate_tokens(input: &str) -> usize {
@@ -399,6 +415,31 @@ fn npm_summary_regex() -> &'static Regex {
     })
 }
 
+fn npm_fetch_regex() -> &'static Regex {
+    static REGEX: OnceLock<Regex> = OnceLock::new();
+    REGEX.get_or_init(|| Regex::new(r"^npm http fetch\s+").expect("valid regex"))
+}
+
+fn npm_deprecated_regex() -> &'static Regex {
+    static REGEX: OnceLock<Regex> = OnceLock::new();
+    REGEX.get_or_init(|| Regex::new(r"^npm warn deprecated\s+").expect("valid regex"))
+}
+
+fn pnpm_progress_regex() -> &'static Regex {
+    static REGEX: OnceLock<Regex> = OnceLock::new();
+    REGEX.get_or_init(|| {
+        Regex::new(
+            r"^(progress:\s+resolved|packages:\s+\+|already up to date|lockfile is up to date)",
+        )
+        .expect("valid regex")
+    })
+}
+
+fn pnpm_summary_regex() -> &'static Regex {
+    static REGEX: OnceLock<Regex> = OnceLock::new();
+    REGEX.get_or_init(|| Regex::new(r"^done in \d").expect("valid regex"))
+}
+
 fn cargo_download_regex() -> &'static Regex {
     static REGEX: OnceLock<Regex> = OnceLock::new();
     REGEX.get_or_init(|| {
@@ -414,6 +455,49 @@ fn cargo_compile_regex() -> &'static Regex {
 fn cargo_check_regex() -> &'static Regex {
     static REGEX: OnceLock<Regex> = OnceLock::new();
     REGEX.get_or_init(|| Regex::new(r"^checking\s+[a-z0-9_.-]+\s+v?\d").expect("valid regex"))
+}
+
+fn github_actions_group_regex() -> &'static Regex {
+    static REGEX: OnceLock<Regex> = OnceLock::new();
+    REGEX.get_or_init(|| {
+        Regex::new(r"^(::group::|::endgroup::|##\[group\]|##\[endgroup\])").expect("valid regex")
+    })
+}
+
+fn pytest_collect_regex() -> &'static Regex {
+    static REGEX: OnceLock<Regex> = OnceLock::new();
+    REGEX.get_or_init(|| {
+        Regex::new(r"^(collecting \.\.\.|collected \d+ items|=+ test session starts =+|=+ short test summary info =+$)")
+            .expect("valid regex")
+    })
+}
+
+fn pytest_passed_progress_regex() -> &'static Regex {
+    static REGEX: OnceLock<Regex> = OnceLock::new();
+    REGEX.get_or_init(|| {
+        Regex::new(r"(?i)^(tests?/.*|.*::.*)\s+(passed|skipped|xpassed|xfailed)\s+\[\s*\d+%\]$")
+            .expect("valid regex")
+    })
+}
+
+fn docker_buildx_noise_regex() -> &'static Regex {
+    static REGEX: OnceLock<Regex> = OnceLock::new();
+    REGEX.get_or_init(|| {
+        Regex::new(
+            r"^#\d+\s+(?:\[[^\]]+\]\s+)?(?:load |resolve |copy |cached|done|exporting |writing image|naming to )",
+        )
+        .expect("valid regex")
+    })
+}
+
+fn playwright_noise_regex() -> &'static Regex {
+    static REGEX: OnceLock<Regex> = OnceLock::new();
+    REGEX.get_or_init(|| {
+        Regex::new(
+            r"^(running \d+ tests? using \d+ workers?|ok \d+ .* \(\d+(\.\d+)?s\)|\s+\d+ passed \()",
+        )
+        .expect("valid regex")
+    })
 }
 
 fn bracket_prefix_regex() -> &'static Regex {
@@ -535,5 +619,54 @@ mod tests {
         assert!(output.contains("cache hit for: user permissions"));
         assert!(output.contains("cache restored user profile"));
         assert!(output.contains("restore cache consistency marker"));
+    }
+
+    #[test]
+    fn removes_provider_specific_ci_noise_but_keeps_failures() {
+        let mut removed = Vec::new();
+        let mut noise = Vec::new();
+        let input = "\
+::group::npm install
+npm http fetch GET 200 https://registry.npmjs.org/react 34ms
+npm WARN deprecated left-pad@1.3.0: use String.padStart()
+Progress: resolved 200, reused 199, downloaded 1, added 1
+Packages: +42
+Done in 2.3s
+Downloaded serde v1.0.0
+Compiling serde v1.0.0
+collected 12 items
+tests/test_api.py::test_health PASSED [  8%]
+#1 [internal] load build definition from Dockerfile
+#2 CACHED
+#3 DONE 0.1s
+Running 4 tests using 2 workers
+ok 1 [chromium] › login.spec.ts:1:1 › loads login (1.0s)
+FAIL packages/api/user.test.ts
+tests/test_api.py::test_user FAILED [ 16%]
+Error: UNIQUE_PROVIDER_FAILURE
+Final error summary: provider test failed
+";
+
+        let output = crush_logs(input, CleanMode::Aggressive, &mut removed, &mut noise);
+
+        assert!(!output.contains("npm http fetch"));
+        assert!(!output.contains("npm WARN deprecated"));
+        assert!(!output.contains("Progress: resolved"));
+        assert!(!output.contains("Downloaded serde"));
+        assert!(!output.contains("Compiling serde"));
+        assert!(!output.contains("collected 12 items"));
+        assert!(!output.contains("#1 [internal]"));
+        assert!(!output.contains("Running 4 tests using 2 workers"));
+        assert!(!output.contains("ok 1 [chromium]"));
+        assert!(output.contains("FAIL packages/api/user.test.ts"));
+        assert!(output.contains("tests/test_api.py::test_user FAILED"));
+        assert!(output.contains("UNIQUE_PROVIDER_FAILURE"));
+        assert!(output.contains("Final error summary: provider test failed"));
+        assert!(removed
+            .iter()
+            .any(|section| section.label == "install/build noise"));
+        assert!(noise
+            .iter()
+            .any(|source| source.label == "install/build noise"));
     }
 }

@@ -1,5 +1,7 @@
 use std::sync::OnceLock;
 
+use html5ever::tendril::TendrilSink;
+use markup5ever_rcdom::{Handle, NodeData, RcDom};
 use regex::{Captures, Regex};
 
 use crate::config::CleanMode;
@@ -81,6 +83,25 @@ pub(crate) fn html_to_readable_content(input: &str, mode: CleanMode) -> String {
         return input.to_string();
     }
 
+    let (content, code_blocks) = protect_code_blocks(input);
+    let (content, inline_code_blocks) = protect_html_inline_code_blocks(&content);
+    let mut content = render_html_fragment(&content, mode)
+        .unwrap_or_else(|| regex_html_to_readable_content(&content, mode));
+    content = restore_code_blocks(&content, &inline_code_blocks);
+    content = restore_code_blocks(&content, &code_blocks);
+    content = blank_lines_regex()
+        .replace_all(&content, "\n\n")
+        .trim()
+        .to_string();
+
+    if matches!(mode, CleanMode::Aggressive) {
+        content = collapse_sparse_markdown_separators(&content);
+    }
+
+    content
+}
+
+fn regex_html_to_readable_content(input: &str, mode: CleanMode) -> String {
     let (mut content, code_blocks) = protect_code_blocks(input);
     content = convert_tables(&content);
     content = convert_links(&content);
@@ -115,8 +136,8 @@ fn remove_noise_blocks_for_tag(
 
     while let Some(open_match) = open_regex.find_at(input, cursor) {
         output.push_str(&input[cursor..open_match.start()]);
-        let block_end =
-            find_matching_tag_end(input, tag, open_match.end()).unwrap_or(open_match.end());
+        let block_end = find_matching_tag_end(input, tag, open_match.end())
+            .unwrap_or_else(|| find_unclosed_noise_block_end(input, open_match.end()));
         removed.push(input[open_match.start()..block_end].to_string());
         output.push('\n');
         cursor = block_end;
@@ -148,6 +169,13 @@ fn find_matching_tag_end(input: &str, tag: &str, scan_from: usize) -> Option<usi
     }
 
     None
+}
+
+fn find_unclosed_noise_block_end(input: &str, scan_from: usize) -> usize {
+    malformed_noise_boundary_regex()
+        .find_at(input, scan_from)
+        .map(|boundary| boundary.start())
+        .unwrap_or(input.len())
 }
 
 fn html_tag_name(tag_text: &str) -> Option<&str> {
@@ -205,6 +233,327 @@ fn remove_aggressive_html_blocks(
         .to_string()
 }
 
+fn render_html_fragment(input: &str, mode: CleanMode) -> Option<String> {
+    let dom = html5ever::parse_document(RcDom::default(), Default::default()).one(input);
+    let mut renderer = ParsedHtmlRenderer::new(mode);
+    renderer.render_children(&dom.document);
+    let content = cleanup_readable_lines(&renderer.output);
+    if content.is_empty() {
+        None
+    } else {
+        Some(content)
+    }
+}
+
+struct ParsedHtmlRenderer {
+    mode: CleanMode,
+    output: String,
+}
+
+impl ParsedHtmlRenderer {
+    fn new(mode: CleanMode) -> Self {
+        Self {
+            mode,
+            output: String::new(),
+        }
+    }
+
+    fn render_children(&mut self, handle: &Handle) {
+        for child in handle.children.borrow().iter() {
+            self.render_node(child);
+        }
+    }
+
+    fn render_node(&mut self, handle: &Handle) {
+        match &handle.data {
+            NodeData::Document => self.render_children(handle),
+            NodeData::Text { contents } => {
+                self.output.push_str(&contents.borrow());
+            }
+            NodeData::Element { name, .. } => {
+                let tag = name.local.as_ref();
+                if should_skip_parsed_element(handle, tag, self.mode) {
+                    return;
+                }
+                self.render_element(handle, tag);
+            }
+            _ => {}
+        }
+    }
+
+    fn render_element(&mut self, handle: &Handle, tag: &str) {
+        match tag {
+            "html" | "body" | "main" | "article" => {
+                self.push_blank_line();
+                self.render_children(handle);
+                self.push_blank_line();
+            }
+            "head" | "template" => {}
+            "br" => self.output.push('\n'),
+            "p" => {
+                self.push_blank_line();
+                self.render_children(handle);
+                self.push_blank_line();
+            }
+            "div" | "section" | "header" | "blockquote" => {
+                self.push_blank_line();
+                self.render_children(handle);
+                self.push_blank_line();
+            }
+            "ul" | "ol" => {
+                self.push_blank_line();
+                self.render_children(handle);
+                self.push_blank_line();
+            }
+            "li" => {
+                self.output.push_str("\n- ");
+                self.render_children(handle);
+                self.output.push('\n');
+            }
+            "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
+                let level = tag
+                    .strip_prefix('h')
+                    .and_then(|value| value.parse::<usize>().ok())
+                    .unwrap_or(2)
+                    .clamp(1, 6);
+                let text = collect_inline_text(handle);
+                if !text.is_empty() {
+                    self.push_blank_line();
+                    self.output.push_str(&"#".repeat(level));
+                    self.output.push(' ');
+                    self.output.push_str(&text);
+                    self.push_blank_line();
+                }
+            }
+            "a" => {
+                let label = collect_inline_text(handle);
+                let href = attr_value(handle, "href").unwrap_or_default();
+                if label.is_empty() {
+                    return;
+                }
+                if href.trim().is_empty() {
+                    self.output.push_str(&label);
+                } else {
+                    self.output.push_str(&format!("[{label}]({})", href.trim()));
+                }
+            }
+            "table" => {
+                let rows = collect_table_rows(handle);
+                if !rows.is_empty() {
+                    self.push_blank_line();
+                    self.output.push_str(&table_rows_to_markdown(&rows));
+                    self.push_blank_line();
+                }
+            }
+            "pre" => {
+                let code = collect_raw_text(handle);
+                if !code.trim().is_empty() {
+                    self.push_blank_line();
+                    self.output.push_str("```\n");
+                    self.output.push_str(code.trim_matches('\n'));
+                    self.output.push_str("\n```");
+                    self.push_blank_line();
+                }
+            }
+            "code" => {
+                let code = collect_raw_text(handle);
+                if !code.trim().is_empty() {
+                    self.output.push('`');
+                    self.output.push_str(&cleanup_inline_code_text(&code));
+                    self.output.push('`');
+                }
+            }
+            _ => self.render_children(handle),
+        }
+    }
+
+    fn push_blank_line(&mut self) {
+        let trimmed_len = self.output.trim_end_matches([' ', '\t']).len();
+        self.output.truncate(trimmed_len);
+        if self.output.is_empty() {
+            return;
+        }
+        if !self.output.ends_with("\n\n") {
+            if self.output.ends_with('\n') {
+                self.output.push('\n');
+            } else {
+                self.output.push_str("\n\n");
+            }
+        }
+    }
+}
+
+fn should_skip_parsed_element(handle: &Handle, tag: &str, mode: CleanMode) -> bool {
+    if matches!(
+        tag,
+        "script" | "style" | "noscript" | "svg" | "meta" | "link"
+    ) {
+        return true;
+    }
+    if matches!(mode, CleanMode::Standard | CleanMode::Aggressive)
+        && matches!(tag, "nav" | "footer" | "aside")
+    {
+        return true;
+    }
+    if matches!(mode, CleanMode::Standard | CleanMode::Aggressive)
+        && matches!(tag, "div" | "section" | "form" | "dialog" | "iframe")
+        && parsed_attr_noise_score(handle, matches!(mode, CleanMode::Aggressive)) > 0
+    {
+        return true;
+    }
+    false
+}
+
+fn parsed_attr_noise_score(handle: &Handle, aggressive: bool) -> usize {
+    let mut score = 0usize;
+    if let NodeData::Element { attrs, .. } = &handle.data {
+        for attr in attrs.borrow().iter() {
+            let name = attr.name.local.as_ref();
+            if matches!(
+                name,
+                "id" | "class"
+                    | "role"
+                    | "aria-label"
+                    | "data-testid"
+                    | "data-component"
+                    | "data-module"
+            ) {
+                let value = attr.value.to_ascii_lowercase();
+                let standard = [
+                    "cookie",
+                    "consent",
+                    "gdpr",
+                    "modal",
+                    "popup",
+                    "newsletter",
+                    "subscribe",
+                    "advertisement",
+                    "advertising",
+                    "ad-banner",
+                    "adservice",
+                    "adsbygoogle",
+                    "sponsored",
+                    "promoted",
+                    "tracking",
+                    "analytics",
+                    "promo",
+                    "share-widget",
+                    "social-share",
+                    "paywall",
+                ];
+                let aggressive_terms = [
+                    "related",
+                    "recommended",
+                    "more-stories",
+                    "outbrain",
+                    "taboola",
+                ];
+                if standard.iter().any(|term| value.contains(term))
+                    || (aggressive && aggressive_terms.iter().any(|term| value.contains(term)))
+                {
+                    score += 1;
+                }
+            }
+        }
+    }
+    score
+}
+
+fn attr_value(handle: &Handle, attr_name: &str) -> Option<String> {
+    if let NodeData::Element { attrs, .. } = &handle.data {
+        for attr in attrs.borrow().iter() {
+            if attr.name.local.as_ref() == attr_name {
+                return Some(attr.value.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn collect_inline_text(handle: &Handle) -> String {
+    cleanup_inline_whitespace(&collect_text(handle, false))
+}
+
+fn collect_raw_text(handle: &Handle) -> String {
+    collect_text(handle, true)
+}
+
+fn collect_text(handle: &Handle, raw: bool) -> String {
+    let mut output = String::new();
+    for child in handle.children.borrow().iter() {
+        match &child.data {
+            NodeData::Text { contents } => output.push_str(&contents.borrow()),
+            NodeData::Element { name, .. } => {
+                let tag = name.local.as_ref();
+                match tag {
+                    "br" if raw => output.push('\n'),
+                    "script" | "style" | "noscript" | "svg" => {}
+                    _ => output.push_str(&collect_text(child, raw)),
+                }
+            }
+            _ => {}
+        }
+    }
+    output
+}
+
+fn collect_table_rows(handle: &Handle) -> Vec<Vec<String>> {
+    let mut rows = Vec::new();
+    collect_table_rows_inner(handle, &mut rows);
+    rows
+}
+
+fn collect_table_rows_inner(handle: &Handle, rows: &mut Vec<Vec<String>>) {
+    if let NodeData::Element { name, .. } = &handle.data {
+        if name.local.as_ref() == "tr" {
+            let mut cells = Vec::new();
+            collect_table_cells(handle, &mut cells);
+            if !cells.is_empty() {
+                rows.push(cells);
+            }
+            return;
+        }
+    }
+
+    for child in handle.children.borrow().iter() {
+        collect_table_rows_inner(child, rows);
+    }
+}
+
+fn collect_table_cells(handle: &Handle, cells: &mut Vec<String>) {
+    for child in handle.children.borrow().iter() {
+        if let NodeData::Element { name, .. } = &child.data {
+            let tag = name.local.as_ref();
+            if matches!(tag, "th" | "td") {
+                let text = collect_inline_text(child);
+                if !text.is_empty() {
+                    cells.push(escape_table_cell(&text));
+                }
+                continue;
+            }
+        }
+        collect_table_cells(child, cells);
+    }
+}
+
+fn table_rows_to_markdown(rows: &[Vec<String>]) -> String {
+    if rows.is_empty() {
+        return String::new();
+    }
+    let mut rendered = String::new();
+    rendered.push_str("| ");
+    rendered.push_str(&rows[0].join(" | "));
+    rendered.push_str(" |\n| ");
+    rendered.push_str(&vec!["---"; rows[0].len()].join(" | "));
+    rendered.push_str(" |\n");
+    for row in rows.iter().skip(1) {
+        rendered.push_str("| ");
+        rendered.push_str(&row.join(" | "));
+        rendered.push_str(" |\n");
+    }
+    rendered
+}
+
 fn protect_code_blocks(input: &str) -> (String, Vec<CodeBlock>) {
     let mut blocks = Vec::new();
     let content = pre_regex()
@@ -220,6 +569,29 @@ fn protect_code_blocks(input: &str) -> (String, Vec<CodeBlock>) {
                 rendered: format!("\n\n```\n{}\n```\n\n", code.trim_matches('\n')),
             });
             format!("\n{placeholder}\n")
+        })
+        .to_string();
+
+    (content, blocks)
+}
+
+fn protect_html_inline_code_blocks(input: &str) -> (String, Vec<CodeBlock>) {
+    let mut blocks = Vec::new();
+    let content = inline_code_regex()
+        .replace_all(input, |caps: &Captures<'_>| {
+            let raw = caps.get(1).map(|m| m.as_str()).unwrap_or_default();
+            let code = cleanup_inline_code_text(raw);
+            let index = blocks.len();
+            let placeholder = code_placeholder(input, index);
+            blocks.push(CodeBlock {
+                placeholder: placeholder.clone(),
+                rendered: if code.is_empty() {
+                    String::new()
+                } else {
+                    format!("`{code}`")
+                },
+            });
+            placeholder
         })
         .to_string();
 
@@ -495,6 +867,14 @@ fn aggressive_block_regex() -> &'static Regex {
     })
 }
 
+fn malformed_noise_boundary_regex() -> &'static Regex {
+    static REGEX: OnceLock<Regex> = OnceLock::new();
+    REGEX.get_or_init(|| {
+        Regex::new(r"(?is)<\s*(?:/?\s*(?:body|html|main|article)|h[1-6]\b|table\b|pre\b|section\b)")
+            .expect("valid regex")
+    })
+}
+
 fn pre_regex() -> &'static Regex {
     static REGEX: OnceLock<Regex> = OnceLock::new();
     REGEX.get_or_init(|| Regex::new(r"(?is)<pre\b[^>]*>(.*?)</pre>").expect("valid regex"))
@@ -708,5 +1088,36 @@ mod tests {
         assert!(!output.contains("DROP_COOKIE_TEXT"));
         assert!(!output.contains("DROP_COOKIE_BUTTON"));
         assert_eq!(removed.len(), 1);
+    }
+
+    #[test]
+    fn parser_preserves_malformed_nested_visible_structure() {
+        let output = html_to_readable_content(
+            r#"
+            <html><body>
+              <article>
+                <h1>KEEP_BROWSER_EXPORT</h1>
+                <p>Read <a href="/docs/parser">parser notes</a>
+                <ul><li>First item<li>Second item with <code>Vec<usize></code></ul>
+                <table><tr><th>Mode<th>Keeps<tr><td>standard<td>tables and lists</table>
+                <pre><code>fn keep_code() {
+    println!("KEEP_CODE_INDENT");
+}</code></pre>
+              </article>
+              <div id="cookie-consent"><p>DROP_COOKIE_EXPORT</p>
+            </body></html>
+            "#,
+            CleanMode::Standard,
+        );
+
+        assert!(output.contains("# KEEP_BROWSER_EXPORT"));
+        assert!(output.contains("[parser notes](/docs/parser)"));
+        assert!(output.contains("- First item"));
+        assert!(output.contains("- Second item with `Vec<usize>`"));
+        assert!(output.contains("| Mode | Keeps |"));
+        assert!(output.contains("| standard | tables and lists |"));
+        assert!(output.contains("```"));
+        assert!(output.contains("KEEP_CODE_INDENT"));
+        assert!(!output.contains("DROP_COOKIE_EXPORT"));
     }
 }

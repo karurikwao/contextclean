@@ -1,10 +1,15 @@
-use std::io::{self, ErrorKind, Write};
-use std::process::{Command as ProcessCommand, ExitStatus};
+use std::io::{self, ErrorKind, Read, Write};
+use std::process::{Command as ProcessCommand, ExitStatus, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
 
 use clap::Parser;
 use contextclean_cli::args::{parse_positive_usize, CliFit, CliFormat, CliMode};
 use contextclean_cli::exit::{EXIT_OK, EXIT_PROCESSING, EXIT_USAGE};
 use contextclean_core::{clean_text, render_result, CleanMode, CleanOptions, OutputFormat};
+
+const DEFAULT_CAPTURE_LIMIT_BYTES: usize = 4 * 1024 * 1024;
+const TIMEOUT_EXIT_CODE: i32 = 124;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -50,6 +55,14 @@ struct CtxrunCli {
     #[arg(short = 'v', long)]
     verbose: bool,
 
+    /// Maximum bytes to retain from each child output stream while draining pipes.
+    #[arg(long = "capture-limit-bytes", value_parser = parse_positive_ctxrun_usize, default_value_t = DEFAULT_CAPTURE_LIMIT_BYTES)]
+    capture_limit_bytes: usize,
+
+    /// Kill the child command after this many seconds and clean the captured output.
+    #[arg(long = "timeout-seconds", value_parser = parse_positive_ctxrun_usize)]
+    timeout_seconds: Option<usize>,
+
     /// Command and arguments to execute.
     #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true)]
     command: Vec<String>,
@@ -69,22 +82,14 @@ fn run() -> Result<i32, CtxrunError> {
     let cli = CtxrunCli::parse();
     validate(&cli).map_err(|message| CtxrunError::new(message, EXIT_USAGE))?;
 
-    let output = ProcessCommand::new(&cli.command[0])
-        .args(&cli.command[1..])
-        .output()
-        .map_err(|error| {
-            let exit_code = if error.kind() == ErrorKind::NotFound {
-                127
-            } else {
-                EXIT_PROCESSING
-            };
-            CtxrunError::new(
-                format!("failed to run {}: {error}", cli.command[0]),
-                exit_code,
-            )
-        })?;
+    let output = run_child_streaming(&cli)?;
 
-    if output.status.success() {
+    if output
+        .status
+        .map(|status| status.success())
+        .unwrap_or(false)
+        && !output.timed_out
+    {
         io::stdout()
             .write_all(&output.stdout)
             .map_err(|error| CtxrunError::new(error.to_string(), EXIT_PROCESSING))?;
@@ -95,16 +100,21 @@ fn run() -> Result<i32, CtxrunError> {
     }
 
     if !cli.quiet {
-        eprintln!(
-            "ctxrun: command failed with {}; cleaned output follows",
-            status_label(output.status)
-        );
+        let status = output
+            .status
+            .map(status_label)
+            .unwrap_or_else(|| "timeout".to_string());
+        eprintln!("ctxrun: command failed with {status}; cleaned output follows");
     }
     if cli.verbose && !cli.quiet {
         eprintln!("ctxrun: command: {}", cli.command.join(" "));
+        eprintln!(
+            "ctxrun: capture_limit_bytes={} stdout_truncated={} stderr_truncated={}",
+            cli.capture_limit_bytes, output.stdout_truncated, output.stderr_truncated
+        );
     }
 
-    let captured = captured_output(&cli, &output.stdout, &output.stderr);
+    let captured = captured_output(&cli, &output);
     let options = CleanOptions {
         mode: CleanMode::from(cli.mode),
         format: OutputFormat::from(cli.format),
@@ -123,7 +133,14 @@ fn run() -> Result<i32, CtxrunError> {
     writeln!(io::stdout(), "{rendered}")
         .map_err(|error| CtxrunError::new(error.to_string(), EXIT_PROCESSING))?;
 
-    Ok(output.status.code().unwrap_or(EXIT_PROCESSING))
+    if output.timed_out {
+        Ok(TIMEOUT_EXIT_CODE)
+    } else {
+        Ok(output
+            .status
+            .and_then(|status| status.code())
+            .unwrap_or(EXIT_PROCESSING))
+    }
 }
 
 fn validate(cli: &CtxrunCli) -> Result<(), String> {
@@ -145,15 +162,150 @@ fn validate(cli: &CtxrunCli) -> Result<(), String> {
     Ok(())
 }
 
-fn captured_output(cli: &CtxrunCli, stdout: &[u8], stderr: &[u8]) -> String {
-    let mut captured = format!("$ {}\n", cli.command.join(" "));
-    if !stdout.is_empty() {
-        captured.push_str("\n## stdout\n\n");
-        captured.push_str(&String::from_utf8_lossy(stdout));
+fn parse_positive_ctxrun_usize(value: &str) -> Result<usize, String> {
+    let parsed = value
+        .parse::<usize>()
+        .map_err(|_| "must be a positive integer".to_string())?;
+    if parsed == 0 {
+        Err("must be greater than 0".to_string())
+    } else {
+        Ok(parsed)
     }
-    if !stderr.is_empty() {
+}
+
+fn run_child_streaming(cli: &CtxrunCli) -> Result<CtxrunOutput, CtxrunError> {
+    let mut child = ProcessCommand::new(&cli.command[0])
+        .args(&cli.command[1..])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| {
+            let exit_code = if error.kind() == ErrorKind::NotFound {
+                127
+            } else {
+                EXIT_PROCESSING
+            };
+            CtxrunError::new(
+                format!("failed to run {}: {error}", cli.command[0]),
+                exit_code,
+            )
+        })?;
+
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| CtxrunError::new("failed to capture stdout".to_string(), EXIT_PROCESSING))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| CtxrunError::new("failed to capture stderr".to_string(), EXIT_PROCESSING))?;
+
+    let stdout_reader = read_stream_limited(stdout, cli.capture_limit_bytes);
+    let stderr_reader = read_stream_limited(stderr, cli.capture_limit_bytes);
+    let started = Instant::now();
+    let timeout = cli
+        .timeout_seconds
+        .map(|seconds| Duration::from_secs(seconds as u64));
+    let mut timed_out = false;
+    let status = loop {
+        if let Some(status) = child
+            .try_wait()
+            .map_err(|error| CtxrunError::new(error.to_string(), EXIT_PROCESSING))?
+        {
+            break Some(status);
+        }
+        if let Some(timeout) = timeout {
+            if started.elapsed() >= timeout {
+                timed_out = true;
+                let _ = child.kill();
+                let status = child
+                    .wait()
+                    .map_err(|error| CtxrunError::new(error.to_string(), EXIT_PROCESSING))?;
+                break Some(status);
+            }
+        }
+        thread::sleep(Duration::from_millis(20));
+    };
+
+    let stdout = join_reader(stdout_reader)?;
+    let stderr = join_reader(stderr_reader)?;
+
+    Ok(CtxrunOutput {
+        status,
+        timed_out,
+        stdout: stdout.bytes,
+        stderr: stderr.bytes,
+        stdout_truncated: stdout.truncated,
+        stderr_truncated: stderr.truncated,
+    })
+}
+
+fn read_stream_limited<R>(
+    mut reader: R,
+    limit: usize,
+) -> thread::JoinHandle<io::Result<CapturedStream>>
+where
+    R: Read + Send + 'static,
+{
+    thread::spawn(move || {
+        let mut bytes = Vec::new();
+        let mut total = 0usize;
+        let mut buffer = [0u8; 16 * 1024];
+        loop {
+            let read = reader.read(&mut buffer)?;
+            if read == 0 {
+                break;
+            }
+            total = total.saturating_add(read);
+            if bytes.len() < limit {
+                let remaining = limit - bytes.len();
+                let to_copy = remaining.min(read);
+                bytes.extend_from_slice(&buffer[..to_copy]);
+            }
+        }
+        Ok(CapturedStream {
+            bytes,
+            truncated: total > limit,
+        })
+    })
+}
+
+fn join_reader(
+    handle: thread::JoinHandle<io::Result<CapturedStream>>,
+) -> Result<CapturedStream, CtxrunError> {
+    handle
+        .join()
+        .map_err(|_| CtxrunError::new("failed to join output reader".to_string(), EXIT_PROCESSING))?
+        .map_err(|error| CtxrunError::new(error.to_string(), EXIT_PROCESSING))
+}
+
+fn captured_output(cli: &CtxrunCli, output: &CtxrunOutput) -> String {
+    let mut captured = format!("$ {}\n", cli.command.join(" "));
+    if output.timed_out {
+        captured.push_str(&format!(
+            "\n[ctxrun: command timed out after {} second(s)]\n",
+            cli.timeout_seconds.unwrap_or_default()
+        ));
+    }
+    if !output.stdout.is_empty() {
+        captured.push_str("\n## stdout\n\n");
+        captured.push_str(&String::from_utf8_lossy(&output.stdout));
+        if output.stdout_truncated {
+            captured.push_str(&format!(
+                "\n[ctxrun: stdout truncated after {} bytes]\n",
+                cli.capture_limit_bytes
+            ));
+        }
+    }
+    if !output.stderr.is_empty() {
         captured.push_str("\n## stderr\n\n");
-        captured.push_str(&String::from_utf8_lossy(stderr));
+        captured.push_str(&String::from_utf8_lossy(&output.stderr));
+        if output.stderr_truncated {
+            captured.push_str(&format!(
+                "\n[ctxrun: stderr truncated after {} bytes]\n",
+                cli.capture_limit_bytes
+            ));
+        }
     }
     captured
 }
@@ -175,4 +327,20 @@ impl CtxrunError {
     fn new(message: String, exit_code: i32) -> Self {
         Self { message, exit_code }
     }
+}
+
+#[derive(Debug)]
+struct CapturedStream {
+    bytes: Vec<u8>,
+    truncated: bool,
+}
+
+#[derive(Debug)]
+struct CtxrunOutput {
+    status: Option<ExitStatus>,
+    timed_out: bool,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+    stdout_truncated: bool,
+    stderr_truncated: bool,
 }

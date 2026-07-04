@@ -36,15 +36,15 @@
 - No cloud service, accounts, telemetry, or hosted storage.
 - No remote repository cloning.
 - No editor extension.
-- No packaged Python distribution yet.
-- No GitHub Action wrapper package yet.
+- No published Python distribution yet.
+- No versioned GitHub Action release tag yet.
 - No model API calls.
 - No AI-generated summaries.
 - No perfect semantic compression guarantee.
 - No AST-aware code understanding yet.
-- No fully parser-backed HTML DOM cleanup yet.
-- No provider-specific CI log parser yet.
-- No streaming or timeout-aware `ctxrun` capture yet.
+- No perfect browser-rendered DOM fidelity guarantee.
+- No exhaustive provider-specific CI parser yet.
+- No interactive TTY streaming mode for `ctxrun` yet.
 - No plugin system.
 - No background daemon or file watcher.
 - No mutation of input files.

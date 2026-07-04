@@ -265,6 +265,7 @@ fn tool_schema() -> Value {
         "type": "object",
         "properties": {
             "text": { "type": "string", "description": "Raw text/HTML/log content to clean." },
+            "input": { "type": "string", "description": "Alias for text." },
             "path": { "type": "string", "description": "Local file or directory path to read." },
             "sourceName": { "type": "string" },
             "mode": { "type": "string", "enum": ["light", "standard", "aggressive"] },
@@ -277,6 +278,7 @@ fn tool_schema() -> Value {
         },
         "oneOf": [
             { "required": ["text"] },
+            { "required": ["input"] },
             { "required": ["path"] }
         ]
     })

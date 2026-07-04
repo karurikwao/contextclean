@@ -27,6 +27,9 @@ build/
 coverage/
 *.log
 *.tmp
+__pycache__/
+*.py[cod]
+.pytest_cache/
 
 # Fixture exceptions may contain fake secret-shaped examples only.
 !fixtures/**/*.env.example

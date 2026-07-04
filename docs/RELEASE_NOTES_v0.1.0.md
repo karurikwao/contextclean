@@ -20,8 +20,9 @@ ContextClean is a local-first context cleaner for AI agents. It cleans noisy HTM
 
 | Fixture | Before | After | Reduction |
 |---|---:|---:|---:|
-| HTML scrape | 70,571 | 5,874 | 91.7% |
+| HTML scrape | 70,571 | 5,892 | 91.7% |
 | CI failure log | 75,768 | 3,200 | 95.8% |
+| Provider CI mix | 17,469 | 33 | 99.8% |
 | Stack trace dump | 28,189 | 1,850 | 93.4% |
 
 ## Verification
@@ -42,7 +43,6 @@ powershell -ExecutionPolicy Bypass -File .\scripts\benchmarks.ps1
 
 ## Known Limitations
 
-- HTML cleanup is deterministic and parser-light; parser-backed malformed HTML hardening is planned.
-- `ctxrun` currently captures child output with `std::process::Command::output`; streaming capture and timeout controls are planned.
+- The first-party GitHub Action, Python wrapper, and Homebrew notes are scaffolded in-repo and should be versioned in the next release tag.
 - MCP mode is stdio-only and intentionally exposes read-only clean/report tools.
 - crates.io publishing requires registry credentials and final package dry-runs.

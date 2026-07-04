@@ -1,0 +1,40 @@
+name: Action smoke
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - action.yml
+      - .github/workflows/action-smoke.yml
+      - crates/**
+      - Cargo.toml
+      - Cargo.lock
+
+jobs:
+  contextclean-action:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.85.0
+      - run: cargo install --path crates/contextclean-cli --locked
+      - name: Write synthetic failed log
+        run: |
+          cat > failed-log.txt <<'LOG'
+          added 481 packages
+          found 0 vulnerabilities
+          FAIL packages/api/user.test.ts
+          TypeError: Cannot read properties of undefined
+              at loadUser (/app/src/user.ts:42:13)
+              at loadUser (/app/src/user.ts:42:13)
+          LOG
+      - uses: ./
+        with:
+          log-file: failed-log.txt
+          output: ctxclean-failure.md
+          max-tokens: "800"
+          upload-artifact: "false"
+      - name: Verify cleaned artifact
+        run: |
+          grep -q "FAIL packages/api/user.test.ts" ctxclean-failure.md
+          grep -q "TypeError" ctxclean-failure.md
+          ! grep -q "added 481 packages" ctxclean-failure.md

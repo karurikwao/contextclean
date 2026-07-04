@@ -18,8 +18,9 @@ AI agents do better work when they get the right context, not the most context. 
 
 ContextClean is a deterministic local cleaner for that layer.
 
-- HTML scrape fixture: 70,571 -> 5,874 tokens
+- HTML scrape fixture: 70,571 -> 5,892 tokens
 - CI failure fixture: 75,768 -> 3,200 tokens
+- Provider CI mix fixture: 17,469 -> 33 tokens
 - Stack trace fixture: 28,189 -> 1,850 tokens
 
 Those numbers are generated from committed fixtures with exact `o200k_base` token counts and content checks.

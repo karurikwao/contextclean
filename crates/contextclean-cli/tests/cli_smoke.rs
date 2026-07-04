@@ -167,7 +167,9 @@ fn ctxrun_help_starts_successfully() {
         .success()
         .stdout(predicate::str::contains("ctxrun executes"))
         .stdout(predicate::str::contains("--max-tokens"))
-        .stdout(predicate::str::contains("--fit"));
+        .stdout(predicate::str::contains("--fit"))
+        .stdout(predicate::str::contains("--capture-limit-bytes"))
+        .stdout(predicate::str::contains("--timeout-seconds"));
 }
 
 #[test]
@@ -208,6 +210,29 @@ fn ctxrun_cleans_failed_output_and_preserves_exit_code() {
         .stdout(predicate::str::contains("FAIL packages/api/user.test.ts"))
         .stdout(predicate::str::contains("TypeError: bad user"))
         .stdout(predicate::str::contains("added 481 packages").not());
+}
+
+#[test]
+fn ctxrun_drains_stdout_and_stderr_with_capture_cap() {
+    let body = if cfg!(windows) {
+        "for /L %%i in (1,1,2000) do echo stdout repeated line %%i\r\nfor /L %%i in (1,1,2000) do echo stderr repeated line %%i 1>&2\r\nexit /b 9"
+    } else {
+        "i=0\nwhile [ $i -lt 2000 ]; do echo \"stdout repeated line $i\"; echo \"stderr repeated line $i\" >&2; i=$((i + 1)); done\nexit 9"
+    };
+    let (_temp, script) = test_script("ctxrun-streaming-cap", body);
+
+    let mut command = Command::cargo_bin("ctxrun").unwrap();
+    command
+        .arg("--capture-limit-bytes")
+        .arg("256")
+        .arg("--format")
+        .arg("text")
+        .arg(script)
+        .assert()
+        .failure()
+        .code(9)
+        .stdout(predicate::str::contains("stdout truncated after 256 bytes"))
+        .stdout(predicate::str::contains("stderr truncated after 256 bytes"));
 }
 
 #[test]
@@ -388,6 +413,26 @@ fn dirty_html_article_preserves_visible_structure() {
         "noise_sources",
         "html_boilerplate"
     ));
+}
+
+#[test]
+fn malformed_browser_export_fixture_preserves_nested_structure() {
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    command
+        .arg(fixture_path("malformed_browser_export.html"))
+        .arg("--mode")
+        .arg("standard")
+        .arg("--format")
+        .arg("text")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("KEEP_BROWSER_EXPORT_TITLE"))
+        .stdout(predicate::str::contains("[parser notes](/docs/parser)"))
+        .stdout(predicate::str::contains("- First nested item"))
+        .stdout(predicate::str::contains("`Vec<usize>`"))
+        .stdout(predicate::str::contains("| Mode | Keeps |"))
+        .stdout(predicate::str::contains("KEEP_BROWSER_EXPORT_CODE"))
+        .stdout(predicate::str::contains("DROP_BROWSER_EXPORT_COOKIE").not());
 }
 
 #[test]

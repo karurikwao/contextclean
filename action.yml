@@ -1,0 +1,69 @@
+name: ContextClean Failed Log
+description: Clean failed CI logs into compact, redacted AI-agent context artifacts.
+
+inputs:
+  log-file:
+    description: Path to the captured failed log file.
+    required: true
+  output:
+    description: Path for the cleaned context artifact.
+    required: false
+    default: ctxclean-failure.md
+  max-tokens:
+    description: Maximum tokens for the cleaned context.
+    required: false
+    default: "8000"
+  mode:
+    description: Cleaning mode.
+    required: false
+    default: aggressive
+  format:
+    description: Output format.
+    required: false
+    default: markdown
+  ctxclean-bin:
+    description: ctxclean executable path. Defaults to ctxclean on PATH.
+    required: false
+    default: ctxclean
+  upload-artifact:
+    description: Upload the cleaned context as a workflow artifact.
+    required: false
+    default: "true"
+  artifact-name:
+    description: Artifact name when upload-artifact is true.
+    required: false
+    default: ctxclean-failure-context
+
+runs:
+  using: composite
+  steps:
+    - name: Clean failed log
+      shell: bash
+      env:
+        CTXCLEAN_LOG_FILE: ${{ inputs.log-file }}
+        CTXCLEAN_OUTPUT: ${{ inputs.output }}
+        CTXCLEAN_MAX_TOKENS: ${{ inputs.max-tokens }}
+        CTXCLEAN_MODE: ${{ inputs.mode }}
+        CTXCLEAN_FORMAT: ${{ inputs.format }}
+        CTXCLEAN_BIN: ${{ inputs.ctxclean-bin }}
+      run: |
+        set -euo pipefail
+        if [ ! -f "$CTXCLEAN_LOG_FILE" ]; then
+          echo "ContextClean log file not found: $CTXCLEAN_LOG_FILE" >&2
+          exit 2
+        fi
+        "$CTXCLEAN_BIN" gha "$CTXCLEAN_LOG_FILE" \
+          --mode "$CTXCLEAN_MODE" \
+          --format "$CTXCLEAN_FORMAT" \
+          --max-tokens "$CTXCLEAN_MAX_TOKENS" \
+          --output "$CTXCLEAN_OUTPUT" \
+          --force
+        echo "ContextClean wrote $CTXCLEAN_OUTPUT"
+
+    - name: Upload cleaned context
+      if: ${{ inputs.upload-artifact == 'true' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ inputs.output }}
+        if-no-files-found: error

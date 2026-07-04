@@ -70,6 +70,29 @@ function New-GhaFailureFixture {
     Write-Utf8File -Path $Path -Lines $lines
 }
 
+function New-ProviderCiFixture {
+    param([string] $Path)
+    $lines = [System.Collections.Generic.List[string]]::new()
+    $lines.Add("::group::install")
+    for ($i = 1; $i -le 120; $i++) {
+        $lines.Add("npm http fetch GET 200 https://registry.npmjs.org/package-$i $i ms")
+        $lines.Add("npm WARN deprecated package-$i@1.0.0: fixture deprecation noise")
+        $lines.Add("Progress: resolved $($i * 10), reused $($i * 9), downloaded 1, added 1")
+        $lines.Add("Packages: +$i")
+        $lines.Add("Downloaded crate_$i v1.0.$i")
+        $lines.Add("Compiling crate_$i v1.0.$i")
+        $lines.Add("tests/test_$i.py::test_ok PASSED [ 50%]")
+        $lines.Add("#$i [internal] load build definition from Dockerfile")
+        $lines.Add("#$i CACHED")
+        $lines.Add("ok $i [chromium] › feature_$i.spec.ts:1:1 › passes (1.0s)")
+    }
+    $lines.Add("FAIL packages/api/user.test.ts")
+    $lines.Add("tests/test_api.py::test_user FAILED [ 16%]")
+    $lines.Add("Error: KEEP_PROVIDER_FAILURE")
+    $lines.Add("Final error summary: provider test failed")
+    Write-Utf8File -Path $Path -Lines $lines
+}
+
 function New-StackTraceFixture {
     param([string] $Path)
     $lines = [System.Collections.Generic.List[string]]::new()
@@ -89,10 +112,12 @@ function New-StackTraceFixture {
 
 $htmlFixture = Join-Path $FixtureDir "html_scrape_large.html"
 $ghaFixture = Join-Path $FixtureDir "github_actions_failure_large.log"
+$providerFixture = Join-Path $FixtureDir "provider_ci_mix.log"
 $stackFixture = Join-Path $FixtureDir "stack_trace_dump_large.log"
 
 New-HtmlScrapeFixture -Path $htmlFixture
 New-GhaFailureFixture -Path $ghaFixture
+New-ProviderCiFixture -Path $providerFixture
 New-StackTraceFixture -Path $stackFixture
 
 $cargo = Join-Path $env:USERPROFILE ".cargo/bin/cargo.exe"
@@ -122,6 +147,14 @@ $cases = @(
         MustContain = @("FAIL packages/api/user.test.ts", "Unique failure:", "Final error summary")
         MustNotContain = @("added 481 packages", "found 0 vulnerabilities")
         Recommended = "ctxclean gha benchmarks/fixtures/github_actions_failure_large.log --max-tokens 3200 --format markdown"
+    },
+    @{
+        Name = "Provider CI mix"
+        Fixture = "benchmarks/fixtures/provider_ci_mix.log"
+        Args = @("--mode", "aggressive", "--max-tokens", "1600")
+        MustContain = @("FAIL packages/api/user.test.ts", "tests/test_api.py::test_user FAILED", "KEEP_PROVIDER_FAILURE", "Final error summary")
+        MustNotContain = @("npm http fetch", "npm WARN deprecated", "Progress: resolved", "Downloaded crate_", "Compiling crate_", "[internal] load build definition", "[chromium]")
+        Recommended = "ctxclean gha benchmarks/fixtures/provider_ci_mix.log --max-tokens 1600 --format markdown"
     },
     @{
         Name = "Stack trace dump"
