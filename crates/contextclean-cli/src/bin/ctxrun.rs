@@ -1,7 +1,10 @@
+use std::env;
+use std::fs::{self, File, OpenOptions};
 use std::io::{self, ErrorKind, Read, Write};
-use std::process::{Command as ProcessCommand, ExitStatus, Stdio};
+use std::path::{Path, PathBuf};
+use std::process::{self, Command as ProcessCommand, ExitStatus, Stdio};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use clap::Parser;
 use contextclean_cli::args::{parse_positive_usize, CliFit, CliFormat, CliMode};
@@ -90,12 +93,7 @@ fn run() -> Result<i32, CtxrunError> {
         .unwrap_or(false)
         && !output.timed_out
     {
-        io::stdout()
-            .write_all(&output.stdout)
-            .map_err(|error| CtxrunError::new(error.to_string(), EXIT_PROCESSING))?;
-        io::stderr()
-            .write_all(&output.stderr)
-            .map_err(|error| CtxrunError::new(error.to_string(), EXIT_PROCESSING))?;
+        replay_success_output(&output)?;
         return Ok(EXIT_OK);
     }
 
@@ -133,14 +131,14 @@ fn run() -> Result<i32, CtxrunError> {
     writeln!(io::stdout(), "{rendered}")
         .map_err(|error| CtxrunError::new(error.to_string(), EXIT_PROCESSING))?;
 
-    if output.timed_out {
-        Ok(TIMEOUT_EXIT_CODE)
+    Ok(if output.timed_out {
+        TIMEOUT_EXIT_CODE
     } else {
-        Ok(output
+        output
             .status
             .and_then(|status| status.code())
-            .unwrap_or(EXIT_PROCESSING))
-    }
+            .unwrap_or(EXIT_PROCESSING)
+    })
 }
 
 fn validate(cli: &CtxrunCli) -> Result<(), String> {
@@ -200,8 +198,21 @@ fn run_child_streaming(cli: &CtxrunCli) -> Result<CtxrunOutput, CtxrunError> {
         .take()
         .ok_or_else(|| CtxrunError::new("failed to capture stderr".to_string(), EXIT_PROCESSING))?;
 
-    let stdout_reader = read_stream_limited(stdout, cli.capture_limit_bytes);
-    let stderr_reader = read_stream_limited(stderr, cli.capture_limit_bytes);
+    let (stdout_spool_file, stdout_spool_path) = create_spool_file("stdout")?;
+    let (stderr_spool_file, stderr_spool_path) = create_spool_file("stderr")?;
+
+    let stdout_reader = read_stream_limited(
+        stdout,
+        stdout_spool_file,
+        stdout_spool_path,
+        cli.capture_limit_bytes,
+    );
+    let stderr_reader = read_stream_limited(
+        stderr,
+        stderr_spool_file,
+        stderr_spool_path,
+        cli.capture_limit_bytes,
+    );
     let started = Instant::now();
     let timeout = cli
         .timeout_seconds
@@ -237,11 +248,15 @@ fn run_child_streaming(cli: &CtxrunCli) -> Result<CtxrunOutput, CtxrunError> {
         stderr: stderr.bytes,
         stdout_truncated: stdout.truncated,
         stderr_truncated: stderr.truncated,
+        stdout_spool: stdout.spool_path,
+        stderr_spool: stderr.spool_path,
     })
 }
 
 fn read_stream_limited<R>(
     mut reader: R,
+    mut spool: File,
+    spool_path: PathBuf,
     limit: usize,
 ) -> thread::JoinHandle<io::Result<CapturedStream>>
 where
@@ -256,6 +271,7 @@ where
             if read == 0 {
                 break;
             }
+            spool.write_all(&buffer[..read])?;
             total = total.saturating_add(read);
             if bytes.len() < limit {
                 let remaining = limit - bytes.len();
@@ -263,9 +279,11 @@ where
                 bytes.extend_from_slice(&buffer[..to_copy]);
             }
         }
+        spool.flush()?;
         Ok(CapturedStream {
             bytes,
             truncated: total > limit,
+            spool_path,
         })
     })
 }
@@ -277,6 +295,66 @@ fn join_reader(
         .join()
         .map_err(|_| CtxrunError::new("failed to join output reader".to_string(), EXIT_PROCESSING))?
         .map_err(|error| CtxrunError::new(error.to_string(), EXIT_PROCESSING))
+}
+
+fn create_spool_file(stream_name: &str) -> Result<(File, PathBuf), CtxrunError> {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    for attempt in 0..100 {
+        let path = env::temp_dir().join(format!(
+            "ctxrun-{}-{timestamp}-{stream_name}-{attempt}.tmp",
+            process::id()
+        ));
+        match OpenOptions::new().write(true).create_new(true).open(&path) {
+            Ok(file) => return Ok((file, path)),
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => continue,
+            Err(error) => {
+                return Err(CtxrunError::new(
+                    format!("failed to create temporary {stream_name} capture: {error}"),
+                    EXIT_PROCESSING,
+                ));
+            }
+        }
+    }
+    Err(CtxrunError::new(
+        format!("failed to create unique temporary {stream_name} capture"),
+        EXIT_PROCESSING,
+    ))
+}
+
+fn replay_success_output(output: &CtxrunOutput) -> Result<(), CtxrunError> {
+    let mut stdout = io::stdout();
+    replay_stream(&output.stdout_spool, &mut stdout)?;
+    let mut stderr = io::stderr();
+    replay_stream(&output.stderr_spool, &mut stderr)?;
+    Ok(())
+}
+
+fn replay_stream<W>(path: &Path, writer: &mut W) -> Result<(), CtxrunError>
+where
+    W: Write,
+{
+    let mut file = File::open(path).map_err(|error| {
+        CtxrunError::new(
+            format!("failed to replay command output: {error}"),
+            EXIT_PROCESSING,
+        )
+    })?;
+    io::copy(&mut file, writer).map_err(|error| {
+        CtxrunError::new(
+            format!("failed to replay command output: {error}"),
+            EXIT_PROCESSING,
+        )
+    })?;
+    writer.flush().map_err(|error| {
+        CtxrunError::new(
+            format!("failed to flush command output: {error}"),
+            EXIT_PROCESSING,
+        )
+    })?;
+    Ok(())
 }
 
 fn captured_output(cli: &CtxrunCli, output: &CtxrunOutput) -> String {
@@ -333,6 +411,7 @@ impl CtxrunError {
 struct CapturedStream {
     bytes: Vec<u8>,
     truncated: bool,
+    spool_path: PathBuf,
 }
 
 #[derive(Debug)]
@@ -343,4 +422,13 @@ struct CtxrunOutput {
     stderr: Vec<u8>,
     stdout_truncated: bool,
     stderr_truncated: bool,
+    stdout_spool: PathBuf,
+    stderr_spool: PathBuf,
+}
+
+impl Drop for CtxrunOutput {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.stdout_spool);
+        let _ = fs::remove_file(&self.stderr_spool);
+    }
 }

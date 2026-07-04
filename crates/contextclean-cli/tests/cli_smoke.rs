@@ -190,6 +190,26 @@ fn ctxrun_passes_successful_command_through() {
 }
 
 #[test]
+fn ctxrun_replays_success_output_beyond_capture_cap() {
+    let (_temp, script) = if cfg!(windows) {
+        test_script("ctxrun-success-over-cap", "echo 1234567890\r\nexit /b 0")
+    } else {
+        test_script("ctxrun-success-over-cap", "printf 1234567890\nexit 0")
+    };
+
+    let mut command = Command::cargo_bin("ctxrun").unwrap();
+    command
+        .arg("--capture-limit-bytes")
+        .arg("5")
+        .arg(script)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1234567890"))
+        .stdout(predicate::str::contains("stdout truncated").not())
+        .stdout(predicate::str::contains("Cleaned Context").not());
+}
+
+#[test]
 fn ctxrun_cleans_failed_output_and_preserves_exit_code() {
     let body = if cfg!(windows) {
         "echo added 481 packages\r\necho found 0 vulnerabilities\r\necho FAIL packages/api/user.test.ts\r\necho TypeError: bad user\r\necho     at loadUser (/app/src/user.ts:42:13)\r\necho     at loadUser (/app/src/user.ts:42:13)\r\nexit /b 7"
@@ -233,6 +253,30 @@ fn ctxrun_drains_stdout_and_stderr_with_capture_cap() {
         .code(9)
         .stdout(predicate::str::contains("stdout truncated after 256 bytes"))
         .stdout(predicate::str::contains("stderr truncated after 256 bytes"));
+}
+
+#[test]
+fn ctxrun_timeout_exits_124_and_cleans_captured_output() {
+    let body = if cfg!(windows) {
+        "echo CTXRUN_TIMEOUT_STARTED\r\nping -n 4 127.0.0.1 >nul\r\nexit /b 0"
+    } else {
+        "echo CTXRUN_TIMEOUT_STARTED\nsleep 3\nexit 0"
+    };
+    let (_temp, script) = test_script("ctxrun-timeout", body);
+
+    let mut command = Command::cargo_bin("ctxrun").unwrap();
+    command
+        .arg("--timeout-seconds")
+        .arg("1")
+        .arg("--format")
+        .arg("text")
+        .arg(script)
+        .assert()
+        .failure()
+        .code(124)
+        .stderr(predicate::str::contains("ctxrun: command failed"))
+        .stdout(predicate::str::contains("command timed out after 1 second"))
+        .stdout(predicate::str::contains("CTXRUN_TIMEOUT_STARTED"));
 }
 
 #[test]

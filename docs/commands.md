@@ -124,14 +124,14 @@ ctxrun --max-tokens 6000 cargo test -p contextclean-core
 ctxrun --capture-limit-bytes 4194304 --timeout-seconds 120 npm test
 ```
 
-`ctxrun` drains stdout and stderr concurrently to avoid pipe deadlocks. Successful commands replay captured stdout and stderr without cleaning. Failed commands are cleaned with ContextClean and keep the child exit code.
+`ctxrun` drains stdout and stderr concurrently to avoid pipe deadlocks. Successful commands replay full stdout and stderr without cleaning. Failed commands are cleaned with ContextClean and keep the child exit code.
 
 Capture controls:
 
-- `--capture-limit-bytes <N>` retains up to `N` bytes from each child stream while still draining the full pipe. The default is 4 MiB per stream.
+- `--capture-limit-bytes <N>` retains up to `N` bytes from each child stream for failed-output cleaning while still draining and spooling the full pipe. The default is 4 MiB per stream.
 - `--timeout-seconds <N>` kills the child after `N` seconds, cleans whatever was captured, and exits `124`.
 
-If either stream exceeds the capture limit, the cleaned failure output includes a footer such as `[ctxrun: stdout truncated after 4194304 bytes]`. Increase the limit for very large success-output commands that must be replayed in full.
+If either stream exceeds the capture limit, the cleaned failure output includes a footer such as `[ctxrun: stdout truncated after 4194304 bytes]`. Successful commands still replay their full output.
 
 ## Safety Flags
 
