@@ -1,0 +1,33 @@
+/target/
+.wrangler/
+**/*.rs.bk
+Cargo.lock.bak
+
+# Editors and OS files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Local env and secrets
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+id_rsa*
+id_ed25519*
+
+# Generated outputs
+dist/
+build/
+coverage/
+*.log
+*.tmp
+
+# Fixture exceptions may contain fake secret-shaped examples only.
+!fixtures/**/*.env.example
+!fixtures/**/*.log

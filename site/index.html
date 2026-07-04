@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ContextClean - Local-first context cleaner for AI agents</title>
+    <meta
+      name="description"
+      content="ContextClean cleans, compresses, redacts, and token-budgets noisy AI context before it reaches an LLM."
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="#top" aria-label="ContextClean home">
+        <span class="mark">ctx</span>
+        <span>ContextClean</span>
+      </a>
+      <nav aria-label="Primary">
+        <a href="#demo">Demo</a>
+        <a href="#features">Features</a>
+        <a href="#install">Install</a>
+        <a href="#trust">Trust</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Local-first context cleaner for AI agents</p>
+          <h1>Stop paying LLMs to read raw HTML, repeated logs, and secret-shaped noise.</h1>
+          <p class="lede">
+            ContextClean turns noisy files, web exports, terminal output, and project folders into
+            compact, reviewable, token-budgeted context packs.
+          </p>
+          <div class="actions" aria-label="Primary actions">
+            <a class="button primary" href="#install">Install from source</a>
+            <a class="button secondary" href="#demo">See the output</a>
+          </div>
+        </div>
+
+        <div class="terminal-visual" aria-label="Terminal demo preview">
+          <div class="terminal-bar">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <pre><code>$ ctxclean dirty.html --mode standard --format json
+
+input_tokens:       124
+output_tokens:       37
+tokens_saved:        87
+reduction:        70.1%
+
+removed:
+- script/style blocks
+- nav/footer boilerplate
+- cookie and newsletter noise
+
+preserved:
+- main article
+- TypeError at src/app.ts:42</code></pre>
+        </div>
+      </section>
+
+      <section id="demo" class="band">
+        <div class="section-heading">
+          <p class="eyebrow">Verified fixture result</p>
+          <h2>From noisy scrape to model-ready context</h2>
+        </div>
+        <div class="comparison">
+          <article>
+            <h3>Before</h3>
+            <pre><code>&lt;script&gt;window.analytics = true;&lt;/script&gt;
+&lt;nav&gt;Home Pricing Login Cookie preferences&lt;/nav&gt;
+&lt;main&gt;
+  &lt;h1&gt;ContextClean keeps the main article&lt;/h1&gt;
+  &lt;p&gt;Unique failure: TypeError at src/app.ts:42.&lt;/p&gt;
+&lt;/main&gt;
+&lt;footer&gt;Newsletter signup&lt;/footer&gt;</code></pre>
+          </article>
+          <article>
+            <h3>After</h3>
+            <pre><code>ContextClean keeps the main article
+
+Unique failure: TypeError at src/app.ts:42.
+
+Tokens saved: 87
+Reduction: 70.1%</code></pre>
+          </article>
+        </div>
+      </section>
+
+      <section id="features" class="features">
+        <div class="section-heading">
+          <p class="eyebrow">Phase 1 foundation</p>
+          <h2>Built like a real developer tool from day one</h2>
+        </div>
+        <div class="feature-grid">
+          <article>
+            <h3>Clean</h3>
+            <p>Remove scripts, styles, navs, footers, comments, cookie banners, and repeated lines.</p>
+          </article>
+          <article>
+            <h3>Pack</h3>
+            <p>Fit output into an estimated token budget with explicit truncation metadata.</p>
+          </article>
+          <article>
+            <h3>Report</h3>
+            <p>Emit JSON with input/output tokens, tokens saved, removed sections, warnings, and source.</p>
+          </article>
+          <article>
+            <h3>Protect</h3>
+            <p>Redact secret-like values by default and respect ignore files during directory scans.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="install" class="band">
+        <div class="section-heading">
+          <p class="eyebrow">Run locally</p>
+          <h2>No API keys. No telemetry. No cloud dependency.</h2>
+        </div>
+        <pre class="install"><code>git clone https://github.com/contextclean/contextclean
+cd contextclean
+cargo install --path crates/contextclean-cli
+
+ctxclean fixtures/dirty_html_small.html --format json</code></pre>
+      </section>
+
+      <section id="trust" class="trust">
+        <div>
+          <p class="eyebrow">Trust model</p>
+          <h2>Context stays on your machine.</h2>
+        </div>
+        <ul>
+          <li>No network calls in the Phase 1 CLI foundation.</li>
+          <li>Secret-like values are redacted before rendering output.</li>
+          <li>Directory scans skip generated and sensitive paths by default.</li>
+          <li>CI covers format, clippy, tests, MSRV check, and release builds.</li>
+        </ul>
+      </section>
+    </main>
+
+    <footer>
+      <span>ContextClean</span>
+      <span>MIT licensed developer tooling for cleaner AI context.</span>
+    </footer>
+  </body>
+</html>

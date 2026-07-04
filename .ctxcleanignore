@@ -1,0 +1,31 @@
+# Sensitive files
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+id_rsa*
+id_ed25519*
+*.kdbx
+*.sqlite
+*.db
+
+# Generated and dependency folders
+.git/
+node_modules/
+target/
+dist/
+build/
+coverage/
+.cache/
+.next/
+.turbo/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

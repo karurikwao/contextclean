@@ -1,0 +1,9 @@
+# Future configuration sketch. Not loaded by Phase 1.
+
+mode = "standard"
+format = "markdown"
+max_tokens = 12000
+redact_secrets = true
+
+[ignore]
+patterns = ["node_modules/", "dist/", ".env*"]

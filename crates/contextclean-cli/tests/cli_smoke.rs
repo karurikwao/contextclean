@@ -1,0 +1,386 @@
+use assert_cmd::Command;
+use predicates::prelude::*;
+use serde_json::Value;
+use std::fs;
+use std::path::PathBuf;
+use tempfile::tempdir;
+
+fn fixture_path(name: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join("fixtures")
+        .join(name)
+}
+
+#[test]
+fn help_starts_successfully() {
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    command
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("ContextClean strips"))
+        .stdout(predicate::str::contains("--format"))
+        .stdout(predicate::str::contains("--max-tokens"))
+        .stdout(predicate::str::contains("--no-redact-secrets"));
+}
+
+#[test]
+fn cleans_file_to_markdown() {
+    let temp = tempdir().unwrap();
+    let input = temp.path().join("dirty.html");
+    fs::write(
+        &input,
+        "<html><script>noise()</script><main><h1>Keep Me</h1><p>Hello</p></main></html>",
+    )
+    .unwrap();
+
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    command
+        .arg(&input)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("# Cleaned Context"))
+        .stdout(predicate::str::contains("Keep Me"))
+        .stdout(predicate::str::contains("noise").not());
+}
+
+#[test]
+fn emits_parseable_json() {
+    let temp = tempdir().unwrap();
+    let input = temp.path().join("log.txt");
+    fs::write(&input, "error one\nerror one\nfinal failure").unwrap();
+
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    let output = command
+        .arg(&input)
+        .arg("--format")
+        .arg("json")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let parsed: Value = serde_json::from_slice(&output).unwrap();
+
+    assert_eq!(parsed["mode"], "standard");
+    assert_eq!(parsed["format"], "json");
+    assert!(parsed["metrics"]["input_tokens"].as_u64().unwrap() > 0);
+    assert!(parsed["removed_sections"].is_array());
+    assert!(parsed["warnings"].is_array());
+    assert!(parsed["output"]["content"]
+        .as_str()
+        .unwrap()
+        .contains("final failure"));
+}
+
+#[test]
+fn refuses_to_overwrite_without_force() {
+    let temp = tempdir().unwrap();
+    let input = temp.path().join("input.txt");
+    let output = temp.path().join("output.md");
+    fs::write(&input, "hello").unwrap();
+    fs::write(&output, "existing").unwrap();
+
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    command
+        .arg(&input)
+        .arg("--output")
+        .arg(&output)
+        .assert()
+        .failure()
+        .code(2)
+        .stderr(predicate::str::contains("output file already exists"));
+
+    assert_eq!(fs::read_to_string(output).unwrap(), "existing");
+}
+
+#[test]
+fn writes_output_with_force() {
+    let temp = tempdir().unwrap();
+    let input = temp.path().join("input.txt");
+    let output = temp.path().join("output.md");
+    fs::write(&input, "hello").unwrap();
+    fs::write(&output, "existing").unwrap();
+
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    command
+        .arg(&input)
+        .arg("--output")
+        .arg(&output)
+        .arg("--force")
+        .assert()
+        .success();
+
+    assert!(fs::read_to_string(output).unwrap().contains("hello"));
+}
+
+#[test]
+fn writes_output_with_out_alias() {
+    let temp = tempdir().unwrap();
+    let input = temp.path().join("input.txt");
+    let output = temp.path().join("output.md");
+    fs::write(&input, "hello alias").unwrap();
+
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    command
+        .arg(&input)
+        .arg("--out")
+        .arg(&output)
+        .assert()
+        .success()
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains("wrote cleaned output"));
+
+    assert!(fs::read_to_string(output).unwrap().contains("hello alias"));
+}
+
+#[test]
+fn committed_html_fixture_smokes() {
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    command
+        .arg(fixture_path("dirty_html_small.html"))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "ContextClean keeps the main article",
+        ))
+        .stdout(predicate::str::contains("window.analytics").not())
+        .stdout(predicate::str::contains("Newsletter signup").not());
+}
+
+#[test]
+fn committed_log_fixture_smokes_with_truncation_json() {
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    let output = command
+        .arg(fixture_path("repeated_log.txt"))
+        .arg("--max-tokens")
+        .arg("40")
+        .arg("--format")
+        .arg("json")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let parsed: Value = serde_json::from_slice(&output).unwrap();
+
+    assert_eq!(parsed["truncation"]["applied"], true);
+    assert!(parsed["output"]["tokens"].as_u64().unwrap() <= 40);
+}
+
+#[test]
+fn directory_fixture_skips_sensitive_files() {
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    command
+        .arg(fixture_path("simple_project"))
+        .arg("--format")
+        .arg("text")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("src/app.rs"))
+        .stdout(predicate::str::contains("hello from fixture"))
+        .stdout(predicate::str::contains("fixture-fake-secret-value").not());
+}
+
+#[test]
+fn reads_explicit_stdin_dash() {
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    command
+        .arg("-")
+        .write_stdin("hello\nhello\nkept\n")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("kept"));
+}
+
+#[test]
+fn reads_piped_stdin_when_input_is_omitted() {
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    command
+        .write_stdin("omitted stdin works\n")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("omitted stdin works"));
+}
+
+#[test]
+fn dry_run_does_not_write_output_file() {
+    let temp = tempdir().unwrap();
+    let input = temp.path().join("input.txt");
+    let output = temp.path().join("output.md");
+    fs::write(&input, "hello").unwrap();
+
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    command
+        .arg(&input)
+        .arg("--dry-run")
+        .arg("--output")
+        .arg(&output)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("hello"))
+        .stderr(predicate::str::contains("dry run: not writing output"));
+
+    assert!(!output.exists());
+}
+
+#[test]
+fn json_verbose_keeps_stdout_parseable_and_diagnostics_on_stderr() {
+    let temp = tempdir().unwrap();
+    let input = temp.path().join("input.txt");
+    fs::write(&input, "json verbose").unwrap();
+
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    let assert = command
+        .arg(&input)
+        .arg("--format")
+        .arg("json")
+        .arg("--verbose")
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("input_tokens"));
+    let output = assert.get_output().stdout.clone();
+    let parsed: Value = serde_json::from_slice(&output).unwrap();
+
+    assert_eq!(parsed["format"], "json");
+}
+
+#[test]
+fn quiet_and_verbose_conflict() {
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    command
+        .arg("--quiet")
+        .arg("--verbose")
+        .write_stdin("hello")
+        .assert()
+        .failure()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "--quiet and --verbose cannot be used together",
+        ));
+}
+
+#[test]
+fn max_tokens_zero_is_rejected() {
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    command
+        .arg("--max-tokens")
+        .arg("0")
+        .write_stdin("hello")
+        .assert()
+        .failure()
+        .code(2)
+        .stderr(predicate::str::contains("invalid value"));
+}
+
+#[test]
+fn cli_redacts_by_default() {
+    let temp = tempdir().unwrap();
+    let input = temp.path().join("input.txt");
+    fs::write(
+        &input,
+        "DATABASE_URL=postgres://user:secret@localhost/app\n",
+    )
+    .unwrap();
+
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    command
+        .arg(&input)
+        .arg("--format")
+        .arg("markdown")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[REDACTED_SECRET]"))
+        .stdout(predicate::str::contains("user:secret").not())
+        .stdout(predicate::str::contains("secrets_redacted"));
+}
+
+#[test]
+fn committed_mixed_markdown_fixture_smokes() {
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    let output = command
+        .arg(fixture_path("mixed_markdown.md"))
+        .arg("--format")
+        .arg("json")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let parsed: Value = serde_json::from_slice(&output).unwrap();
+    let content = parsed["output"]["content"].as_str().unwrap();
+
+    assert!(content.contains("This action item must be preserved."));
+    assert!(content.contains("TypeError"));
+    assert!(content.contains("[Repeated 3 times] warning: retrying fetch"));
+    assert!(!content.contains("Cookie preferences"));
+    assert!(!content.contains("Newsletter signup"));
+}
+
+#[test]
+fn directory_scan_respects_gitignore_and_ctxcleanignore() {
+    let temp = tempdir().unwrap();
+    fs::create_dir_all(temp.path().join("src")).unwrap();
+    fs::create_dir_all(temp.path().join("ignored-by-git")).unwrap();
+    fs::create_dir_all(temp.path().join("ignored-by-ctx")).unwrap();
+    fs::write(temp.path().join("src/keep.txt"), "KEEP_SENTINEL").unwrap();
+    fs::write(temp.path().join(".gitignore"), "ignored-by-git/\n").unwrap();
+    fs::write(temp.path().join(".ctxcleanignore"), "ignored-by-ctx/\n").unwrap();
+    fs::write(
+        temp.path().join("ignored-by-git/file.txt"),
+        "GITIGNORE_SENTINEL",
+    )
+    .unwrap();
+    fs::write(
+        temp.path().join("ignored-by-ctx/file.txt"),
+        "CTXCLEANIGNORE_SENTINEL",
+    )
+    .unwrap();
+
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    command
+        .arg(temp.path())
+        .arg("--format")
+        .arg("text")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("KEEP_SENTINEL"))
+        .stdout(predicate::str::contains("GITIGNORE_SENTINEL").not())
+        .stdout(predicate::str::contains("CTXCLEANIGNORE_SENTINEL").not());
+}
+
+#[test]
+fn mode_selection_changes_boilerplate_behavior() {
+    let temp = tempdir().unwrap();
+    let input = temp.path().join("input.html");
+    fs::write(
+        &input,
+        "<nav>Keep in light</nav><main>Unique error at src/app.rs:9</main>\n----------",
+    )
+    .unwrap();
+
+    let mut light = Command::cargo_bin("ctxclean").unwrap();
+    light
+        .arg(&input)
+        .arg("--mode")
+        .arg("light")
+        .arg("--format")
+        .arg("text")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Keep in light"));
+
+    let mut aggressive = Command::cargo_bin("ctxclean").unwrap();
+    aggressive
+        .arg(&input)
+        .arg("--mode")
+        .arg("aggressive")
+        .arg("--format")
+        .arg("text")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Unique error at src/app.rs:9"))
+        .stdout(predicate::str::contains("Keep in light").not())
+        .stdout(predicate::str::contains("----------").not());
+}

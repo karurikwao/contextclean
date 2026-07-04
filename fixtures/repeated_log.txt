@@ -1,0 +1,7 @@
+2026-07-03T10:00:00Z info health check ok
+2026-07-03T10:00:01Z warn retrying database connection
+2026-07-03T10:00:01Z warn retrying database connection
+2026-07-03T10:00:01Z warn retrying database connection
+2026-07-03T10:00:02Z error TypeError: cannot read property 'id'
+    at loadUser (src/user.ts:42)
+    at main (src/main.ts:8)
