@@ -33,10 +33,12 @@ Goal: reduce common context bloat while preserving user-visible meaning and evid
 Allowed:
 
 - Everything in `light`.
-- Convert basic HTML into readable text.
-- Remove common boilerplate: nav, footer, aside, svg, cookie banners, newsletter prompts, ads, tracking fragments.
+- Convert basic HTML into readable Markdown-like text while preserving headings, links, paragraphs, tables, lists, inline code, and fenced code blocks.
+- Remove common boilerplate: nav, footer, aside, svg, cookie banners, consent modals, newsletter prompts, ads, tracking fragments.
 - Remove HTML comments.
-- Collapse adjacent identical log lines with an explicit count.
+- Collapse repeated log lines, including timestamp-varied adjacent retries, with an explicit count.
+- Collapse duplicate stack frames with an explicit marker.
+- Remove safe install/build noise while preserving failures.
 - Preserve errors, warnings, stack traces, timestamps, paths, versions, and code fences.
 
 Not allowed:
@@ -61,8 +63,9 @@ Allowed:
 
 - Everything in `standard`.
 - Remove broader low-signal formatting and repeated disclaimers.
-- Compress repeated structures. In Phase 1 this means adjacent identical lines are represented as `[Repeated N times] <line>`. Later V1 hardening may add stack-frame and near-duplicate grouping.
+- Compress repeated structures with explicit markers such as `[Repeated N times] <line>` and `[Collapsed stack frames: N duplicate frames removed]`.
 - Remove badge/decorative lines.
+- Remove broader sponsored/related HTML blocks when they are structurally marked as boilerplate.
 - Strip generated boilerplate comments when `--strip-comments` is used.
 
 Not allowed:

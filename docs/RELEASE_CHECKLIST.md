@@ -4,8 +4,11 @@
 
 - [ ] `cargo fmt --all -- --check`
 - [ ] `cargo clippy --workspace --all-targets --all-features -- -D warnings`
-- [ ] `cargo test --workspace --all-features`
-- [ ] `cargo build --workspace --release`
+- [ ] `cargo test --workspace --all-features --locked`
+- [ ] `cargo build --workspace --release --locked`
+- [ ] `cargo package -p contextclean-core --allow-dirty --no-verify`
+- [ ] Publish `contextclean-core` first when publishing to crates.io.
+- [ ] After `contextclean-core` is available in the registry, run `cargo package -p contextclean-cli --allow-dirty --no-verify`
 - [ ] README examples verified
 - [ ] `CHANGELOG.md` updated
 - [ ] Security and privacy docs reviewed
@@ -15,7 +18,9 @@
 
 - [ ] `ctxclean --help`
 - [ ] `ctxclean fixtures/dirty_html_small.html`
+- [ ] `ctxclean fixtures/dirty_html_article.html --mode standard --format json`
 - [ ] `ctxclean fixtures/repeated_log.txt --format json`
+- [ ] `ctxclean fixtures/ci_failure_log.txt --mode standard --format json`
 - [ ] `ctxclean fixtures/simple_project --mode standard`
 - [ ] `ctxclean fixtures/repeated_log.txt --max-tokens 120`
 

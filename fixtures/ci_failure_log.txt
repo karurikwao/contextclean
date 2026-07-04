@@ -1,0 +1,13 @@
+added 481 packages
+found 0 vulnerabilities
+2026-07-04T10:00:01Z warn Connection timeout to database
+2026-07-04T10:00:02Z warn Connection timeout to database
+2026-07-04T10:00:03Z warn Connection timeout to database
+FAIL packages/api/user.test.ts
+Unique failure:
+TypeError: Cannot read properties of undefined
+    at loadUser (/app/src/user.ts:42:13)
+    at main (/app/src/main.ts:8:1)
+    at loadUser (/app/src/user.ts:42:13)
+    at main (/app/src/main.ts:8:1)
+Final error summary: request failed after retries

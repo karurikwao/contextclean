@@ -1,5 +1,10 @@
 $ErrorActionPreference = "Stop"
 
+$UserCargoBin = Join-Path $env:USERPROFILE ".cargo\bin"
+if (-not (Get-Command cargo -ErrorAction SilentlyContinue) -and (Test-Path (Join-Path $UserCargoBin "cargo.exe"))) {
+    $env:PATH = "$UserCargoBin;$env:PATH"
+}
+
 function Assert-LastExitCode {
     if ($LASTEXITCODE -ne 0) {
         exit $LASTEXITCODE

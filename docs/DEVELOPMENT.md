@@ -9,7 +9,7 @@
 
 ```bash
 cd contextclean
-cargo build --workspace
+cargo build --workspace --locked
 ```
 
 ## Run
@@ -24,7 +24,7 @@ cargo run -p contextclean-cli -- fixtures/repeated_log.txt --format json
 ```bash
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo test --workspace --all-features
+cargo test --workspace --all-features --locked
 ```
 
 If Rust is not installed on the host but Docker is available:
@@ -54,7 +54,7 @@ sh scripts/check.sh
 ## Release Build
 
 ```bash
-cargo build --workspace --release
+cargo build --workspace --release --locked
 ```
 
 ## Cloudflare Pages

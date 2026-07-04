@@ -6,7 +6,7 @@ ContextClean is pre-1.0. Security fixes apply to the latest unreleased main bran
 
 ## Trust Model
 
-ContextClean is designed to run locally. The Phase 1 foundation contains no telemetry, remote sync, hosted service, or model API calls.
+ContextClean is designed to run locally. The current local CLI contains no telemetry, remote sync, hosted service, or model API calls.
 
 ## Secret Handling
 

@@ -1,6 +1,8 @@
 pub mod cleaner;
 pub mod config;
 pub mod error;
+pub mod html;
+pub mod logs;
 pub mod models;
 pub mod renderer;
 pub mod scanner;

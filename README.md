@@ -4,7 +4,7 @@ Local-first context cleaner for AI agents.
 
 ContextClean turns noisy HTML, logs, pasted terminal output, and project files into compact, reviewable, token-budget-aware context before it gets sent to an LLM. The CLI is `ctxclean`.
 
-> Status: Phase 0 and Phase 1 foundation. The repo has a buildable Rust workspace, product scope, documentation, CI, fixtures, and a working CLI foundation.
+> Status: V1 foundation with Phase 3/4 HTML Cleaner and Log Crusher behavior in place. Exact tokenizer support and parser-backed HTML hardening are still planned.
 
 ## Why ContextClean?
 
@@ -24,15 +24,16 @@ It emits cleaned content plus metrics such as estimated input tokens, output tok
 
 ContextClean is `jq` for LLM context: pipe in messy context, get back clean, compact, model-ready output.
 
-The Phase 1 foundation currently includes:
+The current foundation includes:
 
 - Single-command CLI: `ctxclean [OPTIONS] [INPUT]`
 - File, directory, and stdin input
 - `light`, `standard`, and `aggressive` cleaning modes
 - Text, Markdown, and JSON output formats
 - Estimated token-budget packing with `--max-tokens`
-- HTML execution and boilerplate removal
-- Adjacent repeated-line compression for logs
+- Structure-preserving HTML cleanup for headings, links, paragraphs, tables, and code blocks
+- HTML execution, modal, ad, tracking, cookie, nav, footer, aside, and SVG removal
+- Log crushing for repeated lines, timestamped retries, duplicate stack frames, install noise, and failure preservation
 - Defensive redaction of secret-like values
 - `.gitignore` and `.ctxcleanignore` aware directory scanning
 - Reproducible fixtures, tests, and CI
@@ -40,8 +41,8 @@ The Phase 1 foundation currently includes:
 ## Planned V1 Hardening
 
 - Exact tokenizer support for common OpenAI-compatible vocabularies
-- Parser-backed HTML/Markdown cleaning
-- Stronger log pattern grouping and stack trace preservation
+- Parser-backed HTML/Markdown cleaning for malformed and deeply nested pages
+- Broader log pattern grouping for more CI providers
 - Context reports with noise source ranking
 - More benchmark fixtures and measured README claims
 
@@ -64,7 +65,7 @@ cargo run -p contextclean-cli -- fixtures/dirty_html_small.html --format json
 No host Rust yet, but Docker is available:
 
 ```bash
-docker run --rm -v "${PWD}:/work" -w /work rust:latest cargo test --workspace --all-features --locked
+docker run --rm -v "${PWD}:/work" -w /work -e CARGO_TARGET_DIR=/tmp/contextclean-target rust:1.85-bookworm cargo test --workspace --all-features --locked
 ```
 
 ## Quick Start
@@ -72,13 +73,13 @@ docker run --rm -v "${PWD}:/work" -w /work rust:latest cargo test --workspace --
 Clean an HTML export:
 
 ```bash
-ctxclean fixtures/dirty_html_small.html --mode standard --output clean.md --force
+ctxclean fixtures/dirty_html_article.html --mode standard --output clean.md --force
 ```
 
 Compress a repeated log:
 
 ```bash
-ctxclean fixtures/repeated_log.txt --mode aggressive --format text
+ctxclean fixtures/ci_failure_log.txt --mode standard --format text
 ```
 
 Create machine-readable output:
@@ -160,22 +161,25 @@ ContextClean does not replace a security review. Always inspect context before s
 
 ## Benchmark Targets
 
-The repo includes fixture plans in `benchmarks/`. There are no measured benchmark claims yet; V1 claims should only use measured data.
+The repo includes fixture plans in `benchmarks/`. Demo metrics should stay tied to fixture commands, and public benchmark claims should only use measured data.
 
 | Fixture type | Target reduction |
 |---|---:|
 | Dirty HTML | 60-85 percent |
+| Dirty HTML article exports | 45-75 percent |
 | Repeated logs | 30-80 percent |
+| CI failure logs | 25-70 percent |
 | Mixed Markdown/text | 20-50 percent |
-| Directory input | 30-70 percent |
+| Simple project directories | 0-15 percent |
+| Noisy generated directories | 30-70 percent |
 
 ## Development
 
 ```bash
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo test --workspace --all-features
-cargo build --workspace --release
+cargo test --workspace --all-features --locked
+cargo build --workspace --release --locked
 ```
 
 On Windows PowerShell:
@@ -190,11 +194,12 @@ The Cloudflare Pages landing site lives in `site/` and is configured by `wrangle
 
 ## Roadmap
 
-- Phase 2: harden HTML/Markdown parsing and exact tokenizer support.
-- Phase 3: stronger log crusher and GitHub Actions log distiller.
-- Phase 4: context reports and explain/diff output.
-- Phase 5: MCP server mode for AI agents.
-- Phase 6: release binaries, crates.io package, and Python wrapper.
+- Phase 2: exact tokenizer support and stronger semantic truncation.
+- Phase 3: HTML and Markdown cleaner. Implemented with parser-light deterministic conversion; parser-backed hardening remains planned.
+- Phase 4: Log Crusher. Implemented for repeated lines, duplicate stack frames, install noise, and failure preservation.
+- Phase 5: context reports and explain/diff output.
+- Phase 6: MCP server mode for AI agents.
+- Phase 7: release binaries, crates.io package, and Python wrapper.
 
 ## Contributing
 

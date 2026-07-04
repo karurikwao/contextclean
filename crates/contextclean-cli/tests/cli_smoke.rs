@@ -21,6 +21,22 @@ fn estimated_tokens(bytes: &[u8]) -> usize {
     }
 }
 
+fn json_array_has_kind(parsed: &Value, array_name: &str, kind: &str) -> bool {
+    parsed[array_name]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|item| item["kind"] == kind)
+}
+
+fn json_array_has_warning(parsed: &Value, code: &str) -> bool {
+    parsed["warnings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|item| item["code"] == code)
+}
+
 #[test]
 fn help_starts_successfully() {
     let mut command = Command::cargo_bin("ctxclean").unwrap();
@@ -159,6 +175,51 @@ fn committed_html_fixture_smokes() {
 }
 
 #[test]
+fn dirty_html_article_preserves_visible_structure() {
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    let output = command
+        .arg(fixture_path("dirty_html_article.html"))
+        .arg("--mode")
+        .arg("standard")
+        .arg("--format")
+        .arg("json")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let parsed: Value = serde_json::from_slice(&output).unwrap();
+    let content = parsed["output"]["content"].as_str().unwrap();
+
+    assert!(content.contains("# API Setup & Troubleshooting"));
+    assert!(content.contains("[setup guide](/docs/setup?lang=rust&step=install)"));
+    assert!(content.contains("| Mode | Removes | Keeps |"));
+    assert!(content.contains("| standard | cookie banners | src/app.rs:42 |"));
+    assert!(content.contains("```"));
+    assert!(content.contains("    println!(\"KEEP_CODE_INDENT\");"));
+    assert!(content.contains("Unique visible conclusion"));
+    assert!(!content.contains("window.analytics"));
+    assert!(!content.contains("Accept all cookies"));
+    assert!(!content.contains("Advertisement: buy a distraction"));
+    assert!(parsed["metrics"]["tokens_saved"].as_i64().unwrap() > 0);
+    assert!(json_array_has_kind(
+        &parsed,
+        "removed_sections",
+        "html_execution_block"
+    ));
+    assert!(json_array_has_kind(
+        &parsed,
+        "removed_sections",
+        "html_boilerplate"
+    ));
+    assert!(json_array_has_kind(
+        &parsed,
+        "noise_sources",
+        "html_boilerplate"
+    ));
+}
+
+#[test]
 fn committed_log_fixture_smokes_with_truncation_json() {
     let mut command = Command::cargo_bin("ctxclean").unwrap();
     let output = command
@@ -181,6 +242,98 @@ fn committed_log_fixture_smokes_with_truncation_json() {
     if content.contains("Removed ") {
         assert!(content.contains(&format!("Removed {removed} estimated tokens")));
     }
+}
+
+#[test]
+fn committed_log_fixture_smokes_unbudgeted_json() {
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    let output = command
+        .arg(fixture_path("repeated_log.txt"))
+        .arg("--format")
+        .arg("json")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let parsed: Value = serde_json::from_slice(&output).unwrap();
+    let content = parsed["output"]["content"].as_str().unwrap();
+
+    assert!(content.contains("[Repeated 3 times] retrying database connection"));
+    assert!(content.contains("TypeError"));
+    assert!(content.contains("src/user.ts:42"));
+    assert!(content.contains("src/main.ts:8"));
+    assert_eq!(parsed["truncation"]["applied"], false);
+}
+
+#[test]
+fn ci_failure_log_crushes_noise_but_preserves_failure() {
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    let output = command
+        .arg(fixture_path("ci_failure_log.txt"))
+        .arg("--mode")
+        .arg("standard")
+        .arg("--format")
+        .arg("json")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let parsed: Value = serde_json::from_slice(&output).unwrap();
+    let content = parsed["output"]["content"].as_str().unwrap();
+
+    assert!(content.contains("[Repeated 3 times from 2026-07-04T10:00:01Z to 2026-07-04T10:00:03Z] Connection timeout to database"));
+    assert!(content.contains("[Collapsed stack frames: 2 duplicate frames removed]"));
+    assert!(content.contains("FAIL packages/api/user.test.ts"));
+    assert!(content.contains("Unique failure:"));
+    assert!(content.contains("TypeError: Cannot read properties of undefined"));
+    assert!(content.contains("at loadUser"));
+    assert!(content.contains("at main"));
+    assert!(content.contains("Final error summary: request failed after retries"));
+    assert!(!content.contains("added 481 packages"));
+    assert!(!content.contains("found 0 vulnerabilities"));
+    assert!(parsed["metrics"]["tokens_saved"].as_i64().unwrap() > 0);
+    assert!(json_array_has_kind(
+        &parsed,
+        "removed_sections",
+        "stack_frame"
+    ));
+    assert!(json_array_has_kind(
+        &parsed,
+        "removed_sections",
+        "log_noise"
+    ));
+    assert!(json_array_has_kind(&parsed, "noise_sources", "stack_trace"));
+    assert!(json_array_has_kind(&parsed, "noise_sources", "log_noise"));
+}
+
+#[test]
+fn timestamped_repeats_do_not_merge_distinct_errors() {
+    let input = "\
+2026-07-04T10:00:01Z warn Connection timeout to database
+2026-07-04T10:00:02Z warn Connection timeout to database
+2026-07-04T10:00:03Z warn Connection timeout to database
+2026-07-04T10:00:04Z error TypeError: Cannot read properties of undefined
+2026-07-04T10:00:05Z error ReferenceError: Cannot read properties of undefined
+";
+
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    command
+        .arg("--format")
+        .arg("text")
+        .write_stdin(input)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "[Repeated 3 times from 2026-07-04T10:00:01Z to 2026-07-04T10:00:03Z] Connection timeout to database",
+        ))
+        .stdout(predicate::str::contains(
+            "2026-07-04T10:00:04Z error TypeError",
+        ))
+        .stdout(predicate::str::contains(
+            "2026-07-04T10:00:05Z error ReferenceError",
+        ));
 }
 
 #[test]
@@ -212,7 +365,45 @@ fn directory_fixture_skips_sensitive_files() {
         .success()
         .stdout(predicate::str::contains("src/app.rs"))
         .stdout(predicate::str::contains("hello from fixture"))
+        .stdout(predicate::str::contains(".env.example").not())
         .stdout(predicate::str::contains("fixture-fake-secret-value").not());
+}
+
+#[test]
+fn signed_url_query_secrets_are_redacted_and_reported() {
+    let input = r#"<main><a href="https://s3.example.com/report.csv?X-Amz-Signature=abc123secret&safe=1">signed report</a></main>"#;
+
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    let output = command
+        .arg("--format")
+        .arg("json")
+        .write_stdin(input)
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let parsed: Value = serde_json::from_slice(&output).unwrap();
+    let content = parsed["output"]["content"].as_str().unwrap();
+
+    assert!(content.contains("[REDACTED_SECRET]"));
+    assert!(content.contains("safe=1"));
+    assert!(!content.contains("abc123secret"));
+    assert!(json_array_has_warning(&parsed, "secrets_redacted"));
+    assert!(json_array_has_kind(&parsed, "removed_sections", "secret"));
+    assert!(json_array_has_kind(&parsed, "noise_sources", "secret"));
+}
+
+#[test]
+fn oversized_stdin_is_rejected() {
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    command
+        .arg("-")
+        .write_stdin("x".repeat(4 * 1_048_576 + 1))
+        .assert()
+        .failure()
+        .code(3)
+        .stderr(predicate::str::contains("stdin input exceeds"));
 }
 
 #[test]
@@ -346,6 +537,7 @@ fn committed_mixed_markdown_fixture_smokes() {
     assert!(content.contains("This action item must be preserved."));
     assert!(content.contains("TypeError"));
     assert!(content.contains("[Repeated 3 times] warning: retrying fetch"));
+    assert_eq!(content.matches("```").count() % 2, 0);
     assert!(!content.contains("Cookie preferences"));
     assert!(!content.contains("Newsletter signup"));
 }

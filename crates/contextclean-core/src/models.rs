@@ -65,6 +65,8 @@ pub enum RemovedSectionKind {
     HtmlBoilerplate,
     HtmlComment,
     DuplicateLine,
+    StackFrame,
+    LogNoise,
     CodeComment,
     Secret,
     Truncated,
@@ -83,6 +85,8 @@ pub struct NoiseSource {
 pub enum NoiseSourceKind {
     HtmlBoilerplate,
     Repetition,
+    StackTrace,
+    LogNoise,
     CodeComments,
     Secret,
     Truncation,

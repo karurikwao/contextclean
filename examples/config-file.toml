@@ -1,4 +1,4 @@
-# Future configuration sketch. Not loaded by Phase 1.
+# Future configuration sketch. Not loaded by the current CLI.
 
 mode = "standard"
 format = "markdown"

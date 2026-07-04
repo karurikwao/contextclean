@@ -17,7 +17,7 @@ path = "src/main.rs"
 
 [dependencies]
 clap.workspace = true
-contextclean-core = { path = "../contextclean-core" }
+contextclean-core = { version = "0.1.0", path = "../contextclean-core" }
 
 [dev-dependencies]
 assert_cmd.workspace = true

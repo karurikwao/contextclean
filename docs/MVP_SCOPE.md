@@ -11,8 +11,10 @@
 - `--max-tokens` using deterministic estimated token budgeting.
 - `--strip-comments` for obvious line comments.
 - HTML execution block removal: `script`, `style`, and `noscript`.
-- Standard HTML boilerplate removal: `nav`, `footer`, `aside`, `svg`, comments, cookie/newsletter/ad lines.
-- Adjacent repeated-line compression for logs.
+- Standard HTML boilerplate removal: `nav`, `footer`, `aside`, `svg`, comments, cookie/newsletter/ad/modal/tracking blocks, and short high-confidence boilerplate lines.
+- Structure-preserving HTML conversion for headings, links, paragraphs, tables, lists, inline code, and fenced code blocks.
+- Log Crusher compression for repeated lines, timestamped retries, duplicate stack frames, and safe install/build noise.
+- Preservation of unique errors, failed test names, failure summaries, stack roots, and timestamps around failures.
 - Secret-like value redaction by default.
 - `.gitignore` and `.ctxcleanignore` aware directory scanning.
 - Default skips for sensitive/generated paths.
@@ -29,6 +31,8 @@
 - No AI-generated summaries.
 - No perfect semantic compression guarantee.
 - No AST-aware code understanding yet.
+- No fully parser-backed HTML DOM cleanup yet.
+- No provider-specific CI log parser yet.
 - No exact tokenizer guarantee until tokenizer crates are selected.
 - No plugin system.
 - No background daemon or file watcher.
@@ -59,4 +63,4 @@ See `docs/OUTPUT_SCHEMAS.md` for text, Markdown, and JSON output contracts.
 - README, license, security, contributing, changelog, and docs exist.
 - GitHub Actions CI exists.
 - Fixtures and tests exist.
-- `cargo test --workspace --all-features` passes locally, in CI, or through the documented Docker verification path when host Rust is unavailable.
+- `cargo test --workspace --all-features --locked` passes locally, in CI, or through the documented Docker verification path when host Rust is unavailable.

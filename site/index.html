@@ -45,69 +45,103 @@
             <span></span>
             <span></span>
           </div>
-          <pre><code>$ ctxclean dirty.html --mode standard --format json
+          <pre><code>$ ctxclean dirty.html --mode standard --format text
 
-input_tokens:       124
-output_tokens:       37
-tokens_saved:        87
-reduction:        70.1%
+input_tokens:       321
+output_tokens:      110
+tokens_saved:       211
+reduction:         65.7%
 
 removed:
-- script/style blocks
-- nav/footer boilerplate
-- cookie and newsletter noise
+- script/style/svg blocks
+- nav/footer/aside boilerplate
+- cookie, modal, ad, tracking noise
 
 preserved:
-- main article
-- TypeError at src/app.ts:42</code></pre>
+- headings, links, tables
+- fenced code blocks</code></pre>
         </div>
       </section>
 
       <section id="demo" class="band">
         <div class="section-heading">
-          <p class="eyebrow">Verified fixture result</p>
-          <h2>From noisy scrape to model-ready context</h2>
+          <p class="eyebrow">Fixture-backed excerpts</p>
+          <h2>From noisy HTML and logs to model-ready context</h2>
         </div>
         <div class="comparison">
           <article>
-            <h3>Before</h3>
+            <h3>HTML Before</h3>
             <pre><code>&lt;script&gt;window.analytics = true;&lt;/script&gt;
 &lt;nav&gt;Home Pricing Login Cookie preferences&lt;/nav&gt;
+&lt;div id="cookie-banner"&gt;Accept all cookies&lt;/div&gt;
 &lt;main&gt;
-  &lt;h1&gt;ContextClean keeps the main article&lt;/h1&gt;
-  &lt;p&gt;Unique failure: TypeError at src/app.ts:42.&lt;/p&gt;
+  &lt;h1&gt;API Setup &amp;amp; Troubleshooting&lt;/h1&gt;
+  &lt;p&gt;Read &lt;a href="/docs/setup"&gt;setup guide&lt;/a&gt;.&lt;/p&gt;
+  &lt;table&gt;&lt;tr&gt;&lt;th&gt;Mode&lt;/th&gt;&lt;th&gt;Keeps&lt;/th&gt;&lt;/tr&gt;&lt;/table&gt;
 &lt;/main&gt;
 &lt;footer&gt;Newsletter signup&lt;/footer&gt;</code></pre>
           </article>
           <article>
-            <h3>After</h3>
-            <pre><code>ContextClean keeps the main article
+            <h3>HTML After</h3>
+            <pre><code># API Setup &amp; Troubleshooting
 
-Unique failure: TypeError at src/app.ts:42.
+Read [setup guide](/docs/setup).
 
-Tokens saved: 87
-Reduction: 70.1%</code></pre>
+| Mode | Keeps |
+| --- | --- |
+
+Tokens saved: 211
+Reduction: 65.7%</code></pre>
+          </article>
+          <article>
+            <h3>Log Before</h3>
+            <pre><code>added 481 packages
+found 0 vulnerabilities
+2026-07-04T10:00:01Z warn Connection timeout to database
+2026-07-04T10:00:02Z warn Connection timeout to database
+2026-07-04T10:00:03Z warn Connection timeout to database
+FAIL packages/api/user.test.ts
+Unique failure:
+TypeError: Cannot read properties of undefined
+    at loadUser (/app/src/user.ts:42:13)
+    at main (/app/src/main.ts:8:1)
+    at loadUser (/app/src/user.ts:42:13)
+    at main (/app/src/main.ts:8:1)
+Final error summary: request failed after retries</code></pre>
+          </article>
+          <article>
+            <h3>Log After</h3>
+            <pre><code>[Repeated 3 times from 2026-07-04T10:00:01Z to 2026-07-04T10:00:03Z] Connection timeout to database
+FAIL packages/api/user.test.ts
+TypeError: Cannot read properties of undefined
+    at loadUser (/app/src/user.ts:42:13)
+    at main (/app/src/main.ts:8:1)
+[Collapsed stack frames: 2 duplicate frames removed]
+Final error summary: request failed after retries
+
+Tokens saved: 35
+Reduction: 27.3%</code></pre>
           </article>
         </div>
       </section>
 
       <section id="features" class="features">
         <div class="section-heading">
-          <p class="eyebrow">Phase 1 foundation</p>
-          <h2>Built like a real developer tool from day one</h2>
+          <p class="eyebrow">HTML Cleaner + Log Crusher</p>
+          <h2>Built for the context AI agents actually need</h2>
         </div>
         <div class="feature-grid">
           <article>
-            <h3>Clean</h3>
-            <p>Remove scripts, styles, navs, footers, comments, cookie banners, and repeated lines.</p>
+            <h3>HTML Cleaner</h3>
+            <p>Remove scripts, styles, navs, footers, comments, cookie banners, modals, ads, and tracking blocks.</p>
           </article>
           <article>
-            <h3>Pack</h3>
-            <p>Fit output into an estimated token budget with explicit truncation metadata.</p>
+            <h3>Preserve Structure</h3>
+            <p>Keep headings, links, paragraphs, tables, lists, inline code, and fenced code blocks readable.</p>
           </article>
           <article>
-            <h3>Report</h3>
-            <p>Emit JSON with input/output tokens, tokens saved, removed sections, warnings, and source.</p>
+            <h3>Log Crusher</h3>
+            <p>Collapse repeated lines and duplicate stack frames while preserving failed tests, timestamps, and final errors.</p>
           </article>
           <article>
             <h3>Protect</h3>
@@ -132,7 +166,7 @@ ctxclean fixtures/dirty_html_small.html --format json</code></pre>
           <h2>Context stays on your machine.</h2>
         </div>
         <ul>
-          <li>No network calls in the Phase 1 CLI foundation.</li>
+          <li>No network calls in the local CLI.</li>
           <li>Secret-like values are redacted before rendering output.</li>
           <li>Directory scans skip generated and sensitive paths by default.</li>
           <li>CI covers format, clippy, tests, MSRV check, and release builds.</li>

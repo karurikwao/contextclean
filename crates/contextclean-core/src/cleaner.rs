@@ -4,6 +4,8 @@ use std::time::Instant;
 use regex::Regex;
 
 use crate::config::{CleanMode, CleanOptions};
+use crate::html::{html_to_readable_content, remove_html_noise_blocks};
+use crate::logs::crush_logs;
 use crate::models::{
     CleanResult, InputStats, Metadata, Metrics, NoiseSource, NoiseSourceKind, OutputBlock,
     RemovedSection, RemovedSectionKind, Truncation, Warning, WarningSeverity,
@@ -51,10 +53,25 @@ pub fn clean_text(input: &str, options: &CleanOptions) -> CleanResult {
             NoiseSourceKind::HtmlBoilerplate,
         );
         content = remove_html_comments(&content, &mut removed_sections, &mut noise_sources);
-        content = drop_boilerplate_lines(&content, options.mode, &mut removed_sections);
-        content = html_to_readable_text(&content);
-        content =
-            collapse_adjacent_repeated_lines(&content, &mut removed_sections, &mut noise_sources);
+        content = remove_html_noise_blocks(
+            &content,
+            options.mode,
+            &mut removed_sections,
+            &mut noise_sources,
+        );
+        content = drop_boilerplate_lines(
+            &content,
+            options.mode,
+            &mut removed_sections,
+            &mut noise_sources,
+        );
+        content = html_to_readable_content(&content, options.mode);
+        content = crush_logs(
+            &content,
+            options.mode,
+            &mut removed_sections,
+            &mut noise_sources,
+        );
     }
 
     if options.strip_comments {
@@ -254,28 +271,17 @@ fn drop_boilerplate_lines(
     input: &str,
     mode: CleanMode,
     removed_sections: &mut Vec<RemovedSection>,
+    noise_sources: &mut Vec<NoiseSource>,
 ) -> String {
     let mut kept = Vec::new();
     let mut removed = 0usize;
     let mut removed_tokens = 0usize;
 
     for line in input.lines() {
-        let lower = line.to_ascii_lowercase();
-        let standard_noise = lower.contains("cookie")
-            || lower.contains("newsletter")
-            || lower.contains("subscribe")
-            || lower.contains("advertisement")
-            || lower.contains("privacy choices")
-            || lower.contains("accept all");
-        let aggressive_noise = standard_noise
-            || lower.contains("share this")
-            || lower.contains("skip to content")
-            || lower.contains("all rights reserved");
-
         let should_remove = match mode {
             CleanMode::Light => false,
-            CleanMode::Standard => standard_noise,
-            CleanMode::Aggressive => aggressive_noise,
+            CleanMode::Standard => is_short_web_boilerplate_line(line, false),
+            CleanMode::Aggressive => is_short_web_boilerplate_line(line, true),
         };
 
         if should_remove {
@@ -293,90 +299,69 @@ fn drop_boilerplate_lines(
             tokens_removed: removed_tokens,
             count: removed,
         });
+        noise_sources.push(NoiseSource {
+            kind: NoiseSourceKind::HtmlBoilerplate,
+            label: "boilerplate lines".to_string(),
+            tokens_removed: removed_tokens,
+        });
     }
 
     kept.join("\n")
 }
 
-fn html_to_readable_text(input: &str) -> String {
-    let with_breaks = block_tag_regex().replace_all(input, "\n");
-    let without_tags = tag_regex().replace_all(&with_breaks, "");
-    whitespace_regex()
-        .replace_all(&without_tags, " ")
-        .replace(" \n", "\n")
-        .replace("\n ", "\n")
+fn is_short_web_boilerplate_line(line: &str, aggressive: bool) -> bool {
+    let trimmed = line.trim();
+    if trimmed.is_empty() || trimmed.len() > 220 || looks_like_signal_line(trimmed) {
+        return false;
+    }
+    if trimmed.contains('<') && trimmed.contains('>') && !looks_like_standalone_noise_html(trimmed)
+    {
+        return false;
+    }
+
+    let lower = trimmed.to_ascii_lowercase();
+    let standard_noise = lower == "cookie preferences"
+        || lower == "privacy choices"
+        || lower == "accept all"
+        || lower == "reject all"
+        || lower == "manage preferences"
+        || lower.contains("accept all cookies")
+        || lower.contains("manage cookie preferences")
+        || lower.contains("subscribe to our newsletter")
+        || lower.contains("newsletter signup")
+        || lower.contains("advertisement")
+        || lower.contains("sponsored content");
+    let aggressive_noise = standard_noise
+        || lower == "share this"
+        || lower == "skip to content"
+        || lower == "skip to main content"
+        || lower.contains("all rights reserved");
+
+    if aggressive {
+        aggressive_noise
+    } else {
+        standard_noise
+    }
 }
 
-fn collapse_adjacent_repeated_lines(
-    input: &str,
-    removed_sections: &mut Vec<RemovedSection>,
-    noise_sources: &mut Vec<NoiseSource>,
-) -> String {
-    let mut output = Vec::new();
-    let mut previous: Option<&str> = None;
-    let mut repeat_count = 0usize;
-    let mut removed_tokens = 0usize;
-    let mut group_count = 0usize;
+fn looks_like_signal_line(line: &str) -> bool {
+    let lower = line.to_ascii_lowercase();
+    lower.contains("error")
+        || lower.contains("warning")
+        || lower.contains("failed")
+        || lower.contains("failure")
+        || lower.contains("typeerror")
+        || lower.contains("exception")
+        || lower.contains("src/")
+        || lower.contains(".rs:")
+        || lower.contains(".ts:")
+        || lower.contains(".js:")
+}
 
-    let flush = |output: &mut Vec<String>,
-                 previous: &mut Option<&str>,
-                 repeat_count: &mut usize,
-                 removed_tokens: &mut usize,
-                 group_count: &mut usize| {
-        if let Some(line) = previous.take() {
-            if *repeat_count > 1 && !line.trim().is_empty() {
-                *group_count += 1;
-                *removed_tokens += estimate_tokens(line) * (*repeat_count - 1);
-                output.push(format!("[Repeated {} times] {}", *repeat_count, line));
-            } else {
-                output.push(line.to_string());
-            }
-        }
-        *repeat_count = 0;
-    };
-
-    for line in input.lines() {
-        let trimmed = line.trim();
-        match previous {
-            Some(prev) if prev.trim() == trimmed && !trimmed.is_empty() => {
-                repeat_count += 1;
-            }
-            _ => {
-                flush(
-                    &mut output,
-                    &mut previous,
-                    &mut repeat_count,
-                    &mut removed_tokens,
-                    &mut group_count,
-                );
-                previous = Some(line);
-                repeat_count = 1;
-            }
-        }
-    }
-    flush(
-        &mut output,
-        &mut previous,
-        &mut repeat_count,
-        &mut removed_tokens,
-        &mut group_count,
-    );
-
-    if group_count > 0 {
-        removed_sections.push(RemovedSection {
-            kind: RemovedSectionKind::DuplicateLine,
-            label: "adjacent repeated lines".to_string(),
-            tokens_removed: removed_tokens,
-            count: group_count,
-        });
-        noise_sources.push(NoiseSource {
-            kind: NoiseSourceKind::Repetition,
-            label: "adjacent repeated lines".to_string(),
-            tokens_removed: removed_tokens,
-        });
-    }
-
-    output.join("\n")
+fn looks_like_standalone_noise_html(line: &str) -> bool {
+    let lower = line.to_ascii_lowercase();
+    (lower.contains("cookie") || lower.contains("newsletter") || lower.contains("advertisement"))
+        && !(lower.contains("<main") || lower.contains("<article"))
 }
 
 fn strip_code_comment_lines(
@@ -428,6 +413,7 @@ fn redact_secrets(
         private_key_regex(),
         assignment_secret_regex(),
         whitespace_secret_regex(),
+        url_query_secret_regex(),
         bearer_token_regex(),
         jwt_regex(),
     ] {
@@ -623,27 +609,9 @@ fn html_comment_regex() -> &'static Regex {
     REGEX.get_or_init(|| Regex::new(r"(?is)<!--.*?-->").expect("valid regex"))
 }
 
-fn block_tag_regex() -> &'static Regex {
-    static REGEX: OnceLock<Regex> = OnceLock::new();
-    REGEX.get_or_init(|| {
-        Regex::new(r"(?is)</?(p|div|section|article|main|li|ul|ol|h[1-6]|tr|td|th|br)\b[^>]*>")
-            .expect("valid regex")
-    })
-}
-
-fn tag_regex() -> &'static Regex {
-    static REGEX: OnceLock<Regex> = OnceLock::new();
-    REGEX.get_or_init(|| Regex::new(r"(?is)<[^>]+>").expect("valid regex"))
-}
-
 fn blank_lines_regex() -> &'static Regex {
     static REGEX: OnceLock<Regex> = OnceLock::new();
     REGEX.get_or_init(|| Regex::new(r"\n{3,}").expect("valid regex"))
-}
-
-fn whitespace_regex() -> &'static Regex {
-    static REGEX: OnceLock<Regex> = OnceLock::new();
-    REGEX.get_or_init(|| Regex::new(r"[ \t]{2,}").expect("valid regex"))
 }
 
 fn private_key_regex() -> &'static Regex {
@@ -669,6 +637,16 @@ fn whitespace_secret_regex() -> &'static Regex {
     REGEX.get_or_init(|| {
         Regex::new(
             r#"(?i)\b(api[_-]?key|token|secret|password|passwd|pwd|access[_-]?key|secret[_-]?access[_-]?key)\b\s+["']?[^\s"']{8,}["']?"#,
+        )
+        .expect("valid regex")
+    })
+}
+
+fn url_query_secret_regex() -> &'static Regex {
+    static REGEX: OnceLock<Regex> = OnceLock::new();
+    REGEX.get_or_init(|| {
+        Regex::new(
+            r#"(?i)\b(?:x-amz-signature|x-amz-credential|x-amz-security-token|access_token|refresh_token|api[_-]?key|token|key|signature|sig|session|sessionid|auth|authorization|code)=["']?[^&\s)"']{8,}["']?"#,
         )
         .expect("valid regex")
     })
@@ -727,6 +705,61 @@ mod tests {
             .content
             .contains("[Repeated 3 times] warning: retry"));
         assert!(result.output.content.contains("unique error"));
+    }
+
+    #[test]
+    fn keyword_boilerplate_lines_create_noise_sources() {
+        let result = clean_text(
+            "Keep this article fact.\nCookie preferences\nNewsletter signup",
+            &options(CleanMode::Standard),
+        );
+
+        assert!(result.output.content.contains("Keep this article fact."));
+        assert!(!result.output.content.contains("Cookie preferences"));
+        assert!(result
+            .removed_sections
+            .iter()
+            .any(|section| section.label == "boilerplate lines"));
+        assert!(result
+            .noise_sources
+            .iter()
+            .any(|source| source.label == "boilerplate lines"));
+    }
+
+    #[test]
+    fn redacts_sensitive_url_query_values_with_warning() {
+        let result = clean_text(
+            r#"<main><a href="https://s3.example.com/report.csv?X-Amz-Signature=abc123secret&safe=1">signed report</a></main>"#,
+            &options(CleanMode::Standard),
+        );
+
+        assert!(result.output.content.contains("[REDACTED_SECRET]"));
+        assert!(result.output.content.contains("safe=1"));
+        assert!(!result.output.content.contains("abc123secret"));
+        assert!(result
+            .warnings
+            .iter()
+            .any(|warning| warning.code == "secrets_redacted"));
+        assert!(result
+            .removed_sections
+            .iter()
+            .any(|section| matches!(section.kind, RemovedSectionKind::Secret)));
+        assert!(result
+            .noise_sources
+            .iter()
+            .any(|source| matches!(source.kind, NoiseSourceKind::Secret)));
+    }
+
+    #[test]
+    fn boilerplate_line_cleanup_does_not_drop_minified_main_content() {
+        let result = clean_text(
+            r#"<main><h1>KEEP_MINIFIED_MAIN</h1><p>Important body.</p></main><div id="cookie-banner">Accept all cookies</div>"#,
+            &options(CleanMode::Standard),
+        );
+
+        assert!(result.output.content.contains("KEEP_MINIFIED_MAIN"));
+        assert!(result.output.content.contains("Important body."));
+        assert!(!result.output.content.contains("Accept all cookies"));
     }
 
     #[test]

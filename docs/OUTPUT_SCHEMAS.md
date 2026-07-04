@@ -63,6 +63,8 @@ Allowed `removed_sections.kind` values:
 - `html_boilerplate`
 - `html_comment`
 - `duplicate_line`
+- `stack_frame`
+- `log_noise`
 - `code_comment`
 - `secret`
 - `truncated`
@@ -73,7 +75,7 @@ Allowed `removed_sections.kind` values:
 ```json
 {
   "kind": "repetition",
-  "label": "adjacent repeated lines",
+  "label": "repeated log lines",
   "tokens_removed": 420
 }
 ```
@@ -82,6 +84,8 @@ Allowed `noise_sources.kind` values:
 
 - `html_boilerplate`
 - `repetition`
+- `stack_trace`
+- `log_noise`
 - `code_comments`
 - `secret`
 - `truncation`
@@ -108,6 +112,12 @@ Nullable fields:
 - `source`
 - `truncation.limit_tokens`
 - `truncation.reason`
+
+Budget note:
+
+- `--max-tokens` budgets cleaned `output.content`.
+- Text and Markdown renderers also cap their full rendered output to the estimated budget.
+- JSON output remains valid pretty-printed JSON; the full envelope is not capped, but `output.content` and `output.tokens` reflect the budget.
 
 ## Text
 

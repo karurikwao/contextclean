@@ -1,6 +1,6 @@
 # Commands
 
-Phase 1 exposes a single command:
+The current CLI exposes a single command:
 
 ```bash
 ctxclean [OPTIONS] [INPUT]
@@ -27,6 +27,10 @@ ctxclean [OPTIONS] [INPUT]
 | `--force` | Overwrite output file |
 | `-q, --quiet` | Suppress non-error diagnostics |
 | `-v, --verbose` | Print extra diagnostics |
+| `-h, --help` | Show help |
+| `-V, --version` | Show version |
+
+`--max-tokens` must be a positive integer. Text and Markdown renderers cap the rendered output to the estimated budget. JSON keeps stdout parseable and includes the full pretty-printed envelope, while `output.content` remains budgeted.
 
 ## Exit Codes
 

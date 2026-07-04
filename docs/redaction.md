@@ -4,10 +4,12 @@ ContextClean redacts secret-like values by default. Redaction is defensive and i
 
 ## Current Patterns
 
-Phase 1 redacts:
+The current implementation redacts:
 
 - private key blocks
 - common assignments such as `API_KEY=...`, `TOKEN=...`, `PASSWORD=...`, `DATABASE_URL=...`
+- whitespace-delimited secret forms such as `password secretValue`, `token secretValue`, and access-key variants
+- sensitive URL query parameters preserved from HTML links, such as `token`, `signature`, `X-Amz-Signature`, and `access_token`
 - bearer tokens
 - JWT-like values
 
@@ -22,4 +24,4 @@ Phase 1 redacts:
 
 No secret detector is perfect. ContextClean should be treated as a guardrail, not as a substitute for security review.
 
-Phase 1 assignment redaction is intentionally conservative and works best on single-token values such as `API_KEY=value`, `TOKEN=value`, and `DATABASE_URL=value`. Quoted secrets containing whitespace may not be fully detected yet.
+Assignment redaction is intentionally conservative and works best on single-token values such as `API_KEY=value`, `TOKEN=value`, `DATABASE_URL=value`, and netrc-style `password value`. Quoted secrets containing whitespace may not be fully detected yet.
