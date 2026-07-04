@@ -378,6 +378,33 @@ fn fit_model_sets_budget_metadata() {
 }
 
 #[test]
+fn non_openai_fit_models_set_budget_metadata() {
+    for (fit, model_id, limit, max_output) in [
+        ("claude-sonnet", "claude-sonnet-5", 1_000_000, 128_000),
+        ("gemini-pro", "gemini-2.5-pro", 1_048_576, 65_536),
+    ] {
+        let mut command = Command::cargo_bin("ctxclean").unwrap();
+        let output = command
+            .arg(fixture_path("dirty_html_small.html"))
+            .arg("--fit")
+            .arg(fit)
+            .arg("--format")
+            .arg("json")
+            .assert()
+            .success()
+            .get_output()
+            .stdout
+            .clone();
+        let parsed: Value = serde_json::from_slice(&output).unwrap();
+
+        assert_eq!(parsed["budget"]["fit"], fit);
+        assert_eq!(parsed["budget"]["model_id"], model_id);
+        assert_eq!(parsed["budget"]["effective_limit_tokens"], limit);
+        assert_eq!(parsed["budget"]["model_max_output_tokens"], max_output);
+    }
+}
+
+#[test]
 fn fit_rejects_budget_above_preset() {
     let mut command = Command::cargo_bin("ctxclean").unwrap();
     command

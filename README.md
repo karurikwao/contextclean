@@ -39,7 +39,7 @@ The current foundation includes:
 - Log crushing for repeated lines, timestamped retries, duplicate stack frames, install noise, and failure preservation
 - Defensive redaction of secret-like values, enabled by default
 - `.gitignore` and `.ctxcleanignore` aware directory scanning
-- Default skips for `.git`, `node_modules`, build outputs, caches, sensitive dot-directories, `.env`, private keys, tokens, and certificate-like files
+- Default skips for `.git`, `node_modules`, build outputs, caches, sensitive dot-directories, `.env`, private keys, and certificate-like files
 - Reproducible fixtures, tests, and CI
 
 ## Planned V1 Hardening

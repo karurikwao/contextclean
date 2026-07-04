@@ -45,7 +45,7 @@
             <span></span>
             <span></span>
           </div>
-          <pre><code>$ ctxclean report build.log --max-tokens 8000
+          <pre><code>$ ctxclean report build.log --max-tokens 8000 --format text
 
 ContextClean Report
 input_tokens:       1,284
@@ -90,8 +90,8 @@ Read [setup guide](/docs/setup).
 | Mode | Keeps |
 | --- | --- |
 
-Tokens saved: 211
-Reduction: 65.7%</code></pre>
+Tokens saved: 266
+Reduction: 71.7%</code></pre>
           </article>
           <article>
             <h3>Log Before</h3>
@@ -113,14 +113,15 @@ Final error summary: request failed after retries</code></pre>
             <h3>Log After</h3>
             <pre><code>[Repeated 3 times from 2026-07-04T10:00:01Z to 2026-07-04T10:00:03Z] Connection timeout to database
 FAIL packages/api/user.test.ts
+Unique failure:
 TypeError: Cannot read properties of undefined
     at loadUser (/app/src/user.ts:42:13)
     at main (/app/src/main.ts:8:1)
 [Collapsed stack frames: 2 duplicate frames removed]
 Final error summary: request failed after retries
 
-Tokens saved: 35
-Reduction: 27.3%</code></pre>
+Tokens saved: 43
+Reduction: 28.9%</code></pre>
           </article>
         </div>
       </section>

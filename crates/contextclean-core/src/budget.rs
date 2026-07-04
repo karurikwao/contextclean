@@ -132,7 +132,8 @@ fn semantic_prefix(input: &str, max_tokens: usize) -> String {
     }
 
     let mut output = String::new();
-    for chunk in semantic_chunks(input) {
+    let chunks = semantic_chunks(input);
+    for chunk in &chunks {
         let candidate = format!("{output}{chunk}");
         if count_tokens(&candidate) <= max_tokens {
             output = candidate;
@@ -142,6 +143,13 @@ fn semantic_prefix(input: &str, max_tokens: usize) -> String {
     }
 
     if output.trim().is_empty() {
+        if chunks
+            .first()
+            .map(|chunk| chunk.contains("```"))
+            .unwrap_or(false)
+        {
+            return String::new();
+        }
         hard_prefix(input, max_tokens)
     } else {
         output
@@ -225,6 +233,21 @@ mod tests {
         assert!(packed.applied);
         assert!(count_tokens(&packed.content) <= 12);
         assert!(packed.content.contains("Context Truncated"));
+    }
+
+    #[test]
+    fn packer_does_not_split_oversized_first_code_fence() {
+        let input = format!(
+            "```rust\nfn very_long_first_fence() {{\n{}\n}}\n```\n\nTrailing paragraph",
+            "println!(\"hello\");\n".repeat(80)
+        );
+
+        let packed = pack_to_budget(&input, 40);
+
+        assert!(packed.applied);
+        assert!(count_tokens(&packed.content) <= 40);
+        assert!(packed.content.contains("Context Truncated"));
+        assert_eq!(packed.content.matches("```").count() % 2, 0);
     }
 
     #[test]
