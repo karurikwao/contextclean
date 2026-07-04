@@ -4,7 +4,14 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # tiktoken-rs 0.12.x currently uses syntax rejected by the repo's Rust 1.85 MSRV.
+      - dependency-name: tiktoken-rs
+        versions: [">=0.12.0"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # Keep CI pinned to the advertised Rust 1.85 MSRV until the project intentionally raises it.
+      - dependency-name: dtolnay/rust-toolchain
