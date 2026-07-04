@@ -7,8 +7,16 @@ pub fn render_result(
     format: OutputFormat,
 ) -> Result<String, ContextCleanError> {
     match format {
-        OutputFormat::Text => Ok(render_text(result)),
-        OutputFormat::Markdown => Ok(render_markdown(result)),
+        OutputFormat::Text => Ok(enforce_render_budget(
+            result,
+            render_text(result),
+            OutputFormat::Text,
+        )),
+        OutputFormat::Markdown => Ok(enforce_render_budget(
+            result,
+            render_markdown(result),
+            OutputFormat::Markdown,
+        )),
         OutputFormat::Json => serde_json::to_string_pretty(result)
             .map_err(|error| ContextCleanError::Serialize(error.to_string())),
     }
@@ -83,12 +91,71 @@ fn render_markdown(result: &CleanResult) -> String {
     rendered
 }
 
+fn enforce_render_budget(result: &CleanResult, rendered: String, format: OutputFormat) -> String {
+    let Some(max_tokens) = result.truncation.limit_tokens else {
+        return rendered;
+    };
+    if estimate_tokens(&rendered) <= max_tokens {
+        return rendered;
+    }
+
+    match format {
+        OutputFormat::Text => render_budgeted_human(
+            "",
+            &result.output.content,
+            &format!(
+                "\n\n---\nctxclean truncation={} output_tokens={}\n",
+                result.truncation.applied, result.metrics.output_tokens
+            ),
+            max_tokens,
+        ),
+        OutputFormat::Markdown => render_budgeted_human(
+            "# Cleaned Context\n\n",
+            &result.output.content,
+            &format!(
+                "\n\n---\n\n_ctxclean: truncation={}, output_tokens={}_\n",
+                result.truncation.applied, result.metrics.output_tokens
+            ),
+            max_tokens,
+        ),
+        OutputFormat::Json => rendered,
+    }
+}
+
+fn render_budgeted_human(prefix: &str, content: &str, footer: &str, max_tokens: usize) -> String {
+    let overhead_tokens = estimate_tokens(prefix) + estimate_tokens(footer);
+    let mut body = fit_to_estimated_tokens(content, max_tokens.saturating_sub(overhead_tokens));
+
+    loop {
+        let candidate = format!("{prefix}{}{footer}", body.trim_end());
+        if estimate_tokens(&candidate) <= max_tokens {
+            return candidate;
+        }
+        if body.is_empty() {
+            return fit_to_estimated_tokens(&candidate, max_tokens);
+        }
+        body.pop();
+    }
+}
+
+fn fit_to_estimated_tokens(input: &str, max_tokens: usize) -> String {
+    input.chars().take(max_tokens.saturating_mul(4)).collect()
+}
+
+fn estimate_tokens(input: &str) -> usize {
+    if input.is_empty() {
+        0
+    } else {
+        input.chars().count().div_ceil(4)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::cleaner::clean_text;
     use crate::config::{CleanOptions, OutputFormat};
 
-    use super::render_result;
+    use super::{estimate_tokens, render_result};
 
     #[test]
     fn json_renderer_emits_parseable_json() {
@@ -99,5 +166,21 @@ mod tests {
 
         assert_eq!(parsed["version"], env!("CARGO_PKG_VERSION"));
         assert_eq!(parsed["metrics"]["input_tokens"], 2);
+    }
+
+    #[test]
+    fn markdown_renderer_respects_requested_budget() {
+        let options = CleanOptions {
+            max_tokens: Some(24),
+            ..Default::default()
+        };
+        let result = clean_text(
+            "line one\nline two\nline three\nline four\nline five\nline six\nline seven",
+            &options,
+        );
+
+        let rendered = render_result(&result, OutputFormat::Markdown).unwrap();
+
+        assert!(estimate_tokens(&rendered) <= 24);
     }
 }

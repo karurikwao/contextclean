@@ -2,13 +2,12 @@
 
 ## Prerequisites
 
-- Rust stable toolchain
+- Rust 1.85 toolchain
 - Git
 
 ## Setup
 
 ```bash
-git clone https://github.com/contextclean/contextclean
 cd contextclean
 cargo build --workspace
 ```
@@ -43,13 +42,13 @@ docker run --rm -v "${PWD}:/work" -w /work -e CARGO_TARGET_DIR=/tmp/contextclean
 PowerShell:
 
 ```powershell
-.\scripts\check.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\check.ps1
 ```
 
 POSIX shell:
 
 ```bash
-./scripts/check.sh
+sh scripts/check.sh
 ```
 
 ## Release Build
@@ -60,9 +59,11 @@ cargo build --workspace --release
 
 ## Cloudflare Pages
 
-The static project site lives in `site/`.
+The static project site lives in `site/`. The canonical Pages URL is `https://contextclean.pages.dev/`.
 
 ```bash
 npx wrangler pages project create contextclean --production-branch main
 npx wrangler pages deploy site --project-name contextclean --branch main
 ```
+
+After deployment, verify the live page returns HTTP 200 and still contains `Local-first context cleaner for AI agents`.

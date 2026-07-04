@@ -427,6 +427,7 @@ fn redact_secrets(
     for regex in [
         private_key_regex(),
         assignment_secret_regex(),
+        whitespace_secret_regex(),
         bearer_token_regex(),
         jwt_regex(),
     ] {
@@ -523,20 +524,12 @@ fn truncate_to_budget(
         return input.to_string();
     }
 
-    let full_footer = format!(
-        "\n\n[Context Truncated: Removed {} estimated tokens to fit {} token budget]",
-        current_tokens.saturating_sub(max_tokens),
-        max_tokens
-    );
     let short_footer = "\n\n[Context Truncated]".to_string();
-    let footer = if estimate_tokens(&full_footer) < max_tokens {
-        full_footer
-    } else {
-        short_footer
-    };
-    let footer_tokens = estimate_tokens(&footer);
-    let content_budget_tokens = max_tokens.saturating_sub(footer_tokens).max(1);
-    let mut kept: String = input.chars().take(content_budget_tokens * 4).collect();
+    let content_budget_tokens = max_tokens.saturating_sub(estimate_tokens(&short_footer));
+    let mut kept: String = input
+        .chars()
+        .take(content_budget_tokens.saturating_mul(4))
+        .collect();
 
     if let Some(paragraph_boundary) = kept.rfind("\n\n") {
         kept.truncate(paragraph_boundary);
@@ -544,17 +537,29 @@ fn truncate_to_budget(
         kept.truncate(line_boundary);
     }
 
-    let mut candidate = format!("{}{}", kept.trim_end(), footer);
-    while estimate_tokens(&candidate) > max_tokens && !kept.is_empty() {
+    let (candidate, removed_tokens) = loop {
+        let body = kept.trim_end();
+        let removed_tokens = current_tokens.saturating_sub(estimate_tokens(body));
+        let full_footer = format!(
+            "\n\n[Context Truncated: Removed {removed_tokens} estimated tokens to fit {max_tokens} token budget]"
+        );
+        let footer = if estimate_tokens(&full_footer) < max_tokens {
+            full_footer
+        } else {
+            short_footer.clone()
+        };
+        let candidate = format!("{body}{footer}");
+        if estimate_tokens(&candidate) <= max_tokens {
+            break (candidate, removed_tokens);
+        }
+        if kept.is_empty() {
+            break (
+                fit_to_estimated_tokens("[Context Truncated]", max_tokens),
+                current_tokens,
+            );
+        }
         kept.pop();
-        candidate = format!("{}{}", kept.trim_end(), footer);
-    }
-
-    if estimate_tokens(&candidate) > max_tokens {
-        candidate = "[Context Truncated]".to_string();
-    }
-
-    let removed_tokens = current_tokens.saturating_sub(estimate_tokens(&kept));
+    };
 
     truncation.applied = true;
     truncation.tokens_removed = removed_tokens;
@@ -572,6 +577,10 @@ fn truncate_to_budget(
     });
 
     candidate
+}
+
+fn fit_to_estimated_tokens(input: &str, max_tokens: usize) -> String {
+    input.chars().take(max_tokens.saturating_mul(4)).collect()
 }
 
 fn script_regex() -> &'static Regex {
@@ -655,6 +664,16 @@ fn assignment_secret_regex() -> &'static Regex {
     })
 }
 
+fn whitespace_secret_regex() -> &'static Regex {
+    static REGEX: OnceLock<Regex> = OnceLock::new();
+    REGEX.get_or_init(|| {
+        Regex::new(
+            r#"(?i)\b(api[_-]?key|token|secret|password|passwd|pwd|access[_-]?key|secret[_-]?access[_-]?key)\b\s+["']?[^\s"']{8,}["']?"#,
+        )
+        .expect("valid regex")
+    })
+}
+
 fn bearer_token_regex() -> &'static Regex {
     static REGEX: OnceLock<Regex> = OnceLock::new();
     REGEX
@@ -722,6 +741,17 @@ mod tests {
     }
 
     #[test]
+    fn redacts_whitespace_delimited_secrets() {
+        let result = clean_text(
+            "machine api.example.com login alice password netrcSecretValue123\n",
+            &options(CleanMode::Standard),
+        );
+
+        assert!(result.output.content.contains("[REDACTED_SECRET]"));
+        assert!(!result.output.content.contains("netrcSecretValue123"));
+    }
+
+    #[test]
     fn max_tokens_applies_truncation_footer() {
         let input = "paragraph one\n\nparagraph two with lots and lots and lots and lots of words\n\nparagraph three";
         let mut opts = options(CleanMode::Standard);
@@ -732,5 +762,11 @@ mod tests {
         assert!(result.truncation.applied);
         assert!(result.output.content.contains("Context Truncated"));
         assert!(result.output.tokens <= 12);
+        if result.output.content.contains("Removed ") {
+            assert!(result.output.content.contains(&format!(
+                "Removed {} estimated tokens",
+                result.truncation.tokens_removed
+            )));
+        }
     }
 }

@@ -31,6 +31,6 @@ Future fixture groups:
 | Fixture | Target |
 |---|---:|
 | Dirty HTML | 60-85 percent reduction |
-| Repeated logs | 50-80 percent reduction |
+| Repeated logs | 30-80 percent reduction |
 | Mixed Markdown/text | 20-50 percent reduction |
 | Directory input | 30-70 percent reduction |

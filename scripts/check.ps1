@@ -1,14 +1,18 @@
 $ErrorActionPreference = "Stop"
 
-function Invoke-Cargo {
-    cargo @args
+function Assert-LastExitCode {
     if ($LASTEXITCODE -ne 0) {
         exit $LASTEXITCODE
     }
 }
 
-Invoke-Cargo check --workspace --all-features --locked
-Invoke-Cargo fmt --all -- --check
-Invoke-Cargo clippy --workspace --all-targets --all-features -- -D warnings
-Invoke-Cargo test --workspace --all-features --locked
-Invoke-Cargo build --workspace --release --locked
+& cargo check --workspace --all-features --locked
+Assert-LastExitCode
+& cargo fmt --all -- --check
+Assert-LastExitCode
+& cargo clippy --workspace --all-targets --all-features -- -D warnings
+Assert-LastExitCode
+& cargo test --workspace --all-features --locked
+Assert-LastExitCode
+& cargo build --workspace --release --locked
+Assert-LastExitCode

@@ -5,7 +5,7 @@ This directory holds reproducible benchmark plans and fixture notes for ContextC
 V1 benchmark targets are intentionally modest placeholders until measured fixture results are generated:
 
 - Dirty HTML: 60-85 percent estimated token reduction.
-- Repeated logs: 50-80 percent estimated token reduction.
+- Repeated logs: 30-80 percent estimated token reduction.
 - Mixed Markdown/text: 20-50 percent estimated token reduction.
 - Directory input: 30-70 percent estimated token reduction, depending on generated content.
 

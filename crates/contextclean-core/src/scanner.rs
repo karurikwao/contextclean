@@ -61,13 +61,13 @@ fn read_file(path: &Path) -> Result<SourceData, ContextCleanError> {
 fn read_directory(path: &Path) -> Result<SourceData, ContextCleanError> {
     let mut files = Vec::new();
     let mut warnings = Vec::new();
-    let local_ignore_patterns = load_root_ignore_patterns(path);
     let mut builder = WalkBuilder::new(path);
     builder
         .add_custom_ignore_filename(".ctxcleanignore")
         .git_ignore(true)
         .git_exclude(true)
         .git_global(true)
+        .require_git(false)
         .hidden(false);
 
     for entry in builder.build() {
@@ -76,9 +76,7 @@ fn read_directory(path: &Path) -> Result<SourceData, ContextCleanError> {
         if !entry_path.is_file() {
             continue;
         }
-        if should_skip_default(entry_path)
-            || matches_local_ignore(path, entry_path, &local_ignore_patterns)
-        {
+        if should_skip_default(entry_path) {
             continue;
         }
         files.push(entry_path.to_path_buf());
@@ -143,6 +141,12 @@ fn should_skip_default(path: &Path) -> bool {
         .to_ascii_lowercase();
 
     path_text.contains("/.git/")
+        || path_text.contains("/.aws/")
+        || path_text.contains("/.azure/")
+        || path_text.contains("/.docker/")
+        || path_text.contains("/.gnupg/")
+        || path_text.contains("/.kube/")
+        || path_text.contains("/.ssh/")
         || path_text.contains("/node_modules/")
         || path_text.contains("/target/")
         || path_text.contains("/dist/")
@@ -152,6 +156,11 @@ fn should_skip_default(path: &Path) -> bool {
         || path_text.contains("/.next/")
         || path_text.contains("/.turbo/")
         || file_name.starts_with(".env")
+        || file_name == ".netrc"
+        || file_name == ".npmrc"
+        || file_name == ".pypirc"
+        || file_name == ".dockercfg"
+        || file_name == "credentials"
         || file_name.ends_with(".pem")
         || file_name.ends_with(".key")
         || file_name.ends_with(".p12")
@@ -165,45 +174,6 @@ fn should_skip_default(path: &Path) -> bool {
         || file_name.ends_with(".db")
         || file_name == ".gitignore"
         || file_name == ".ctxcleanignore"
-}
-
-fn load_root_ignore_patterns(root: &Path) -> Vec<String> {
-    [".gitignore", ".ctxcleanignore"]
-        .iter()
-        .flat_map(|file_name| {
-            fs::read_to_string(root.join(file_name))
-                .unwrap_or_default()
-                .lines()
-                .map(str::to_string)
-                .collect::<Vec<_>>()
-        })
-        .map(|line| line.trim().to_string())
-        .filter(|line| !line.is_empty() && !line.starts_with('#') && !line.starts_with('!'))
-        .collect()
-}
-
-fn matches_local_ignore(root: &Path, path: &Path, patterns: &[String]) -> bool {
-    let relative = path
-        .strip_prefix(root)
-        .unwrap_or(path)
-        .display()
-        .to_string()
-        .replace('\\', "/");
-    let file_name = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or_default();
-
-    patterns.iter().any(|pattern| {
-        let pattern = pattern.trim_start_matches('/');
-        if let Some(directory) = pattern.strip_suffix('/') {
-            relative == directory || relative.starts_with(&format!("{directory}/"))
-        } else if pattern.contains('/') {
-            relative == pattern
-        } else {
-            file_name == pattern
-        }
-    })
 }
 
 fn display_relative(root: &Path, path: &Path) -> String {

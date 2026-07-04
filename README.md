@@ -50,8 +50,6 @@ The Phase 1 foundation currently includes:
 Rust is required. Install it from [rustup.rs](https://rustup.rs/) or use the Docker commands in `docs/DEVELOPMENT.md`.
 
 ```bash
-git clone https://github.com/contextclean/contextclean
-cd contextclean
 cargo install --path crates/contextclean-cli
 ```
 
@@ -167,7 +165,7 @@ The repo includes fixture plans in `benchmarks/`. There are no measured benchmar
 | Fixture type | Target reduction |
 |---|---:|
 | Dirty HTML | 60-85 percent |
-| Repeated logs | 50-80 percent |
+| Repeated logs | 30-80 percent |
 | Mixed Markdown/text | 20-50 percent |
 | Directory input | 30-70 percent |
 

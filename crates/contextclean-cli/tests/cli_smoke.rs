@@ -12,6 +12,15 @@ fn fixture_path(name: &str) -> PathBuf {
         .join(name)
 }
 
+fn estimated_tokens(bytes: &[u8]) -> usize {
+    let text = String::from_utf8_lossy(bytes);
+    if text.is_empty() {
+        0
+    } else {
+        text.chars().count().div_ceil(4)
+    }
+}
+
 #[test]
 fn help_starts_successfully() {
     let mut command = Command::cargo_bin("ctxclean").unwrap();
@@ -167,6 +176,29 @@ fn committed_log_fixture_smokes_with_truncation_json() {
 
     assert_eq!(parsed["truncation"]["applied"], true);
     assert!(parsed["output"]["tokens"].as_u64().unwrap() <= 40);
+    let removed = parsed["truncation"]["tokens_removed"].as_u64().unwrap();
+    let content = parsed["output"]["content"].as_str().unwrap();
+    if content.contains("Removed ") {
+        assert!(content.contains(&format!("Removed {removed} estimated tokens")));
+    }
+}
+
+#[test]
+fn markdown_max_tokens_caps_rendered_output() {
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    let output = command
+        .arg(fixture_path("repeated_log.txt"))
+        .arg("--max-tokens")
+        .arg("40")
+        .arg("--format")
+        .arg("markdown")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    assert!(estimated_tokens(&output) <= 40);
 }
 
 #[test]
@@ -348,6 +380,51 @@ fn directory_scan_respects_gitignore_and_ctxcleanignore() {
         .stdout(predicate::str::contains("KEEP_SENTINEL"))
         .stdout(predicate::str::contains("GITIGNORE_SENTINEL").not())
         .stdout(predicate::str::contains("CTXCLEANIGNORE_SENTINEL").not());
+}
+
+#[test]
+fn directory_scan_respects_gitignore_negation() {
+    let temp = tempdir().unwrap();
+    fs::write(temp.path().join(".gitignore"), "drop.txt\n!drop.txt\n").unwrap();
+    fs::write(temp.path().join("drop.txt"), "NEGATION_SENTINEL").unwrap();
+
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    command
+        .arg(temp.path())
+        .arg("--format")
+        .arg("text")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("NEGATION_SENTINEL"));
+}
+
+#[test]
+fn directory_scan_skips_hidden_credential_files_by_default() {
+    let temp = tempdir().unwrap();
+    fs::create_dir_all(temp.path().join("src")).unwrap();
+    fs::create_dir_all(temp.path().join(".aws")).unwrap();
+    fs::write(temp.path().join("src/keep.txt"), "KEEP_SENTINEL").unwrap();
+    fs::write(
+        temp.path().join(".netrc"),
+        "machine api.example.com login alice password netrcSecretValue123",
+    )
+    .unwrap();
+    fs::write(
+        temp.path().join(".aws/credentials"),
+        "aws_secret_access_key = awsSecretValue123456",
+    )
+    .unwrap();
+
+    let mut command = Command::cargo_bin("ctxclean").unwrap();
+    command
+        .arg(temp.path())
+        .arg("--format")
+        .arg("text")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("KEEP_SENTINEL"))
+        .stdout(predicate::str::contains("netrcSecretValue123").not())
+        .stdout(predicate::str::contains("awsSecretValue123456").not());
 }
 
 #[test]

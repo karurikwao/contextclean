@@ -19,6 +19,13 @@
 - [ ] `ctxclean fixtures/simple_project --mode standard`
 - [ ] `ctxclean fixtures/repeated_log.txt --max-tokens 120`
 
+## Cloudflare Pages
+
+- [ ] Deploy the static site: `npx wrangler pages deploy site --project-name contextclean --branch main`
+- [ ] Verify the canonical URL returns HTTP 200: `https://contextclean.pages.dev/`
+- [ ] Verify live content includes `Local-first context cleaner for AI agents`
+- [ ] Verify security headers are present: `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`
+
 ## Release Notes
 
 Release notes must include:
