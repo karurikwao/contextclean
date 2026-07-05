@@ -110,6 +110,19 @@ Start MCP server mode:
 ctxclean mcp
 ```
 
+## Documentation And Wiki
+
+The GitHub Wiki is the long-form operator manual for ContextClean:
+
+- [Wiki home](https://github.com/karurikwao/contextclean/wiki): orientation, core concepts, and page index
+- [Installation](https://github.com/karurikwao/contextclean/wiki/Installation): release binaries, Cargo installs, Docker checks, and verification
+- [Command guide](https://github.com/karurikwao/contextclean/wiki/Command-Guide): `ctxclean`, `ctxclean gha`, `ctxclean repo`, `ctxclean report`, `ctxclean mcp`, and `ctxrun`
+- [Safety and privacy](https://github.com/karurikwao/contextclean/wiki/Safety-And-Privacy): redaction, sensitive paths, ignore files, and local-first guarantees
+- [Integrations](https://github.com/karurikwao/contextclean/wiki/Integrations): GitHub Actions, MCP clients, AI coding agents, Python, LangChain, and LlamaIndex
+- [Benchmarks and validation](https://github.com/karurikwao/contextclean/wiki/Benchmarks-And-Validation): fixture claims, token accounting, and acceptance checks
+
+Use the README for the short path to trying the tool. Use the Wiki when you need deployment details, integration guidance, safety behavior, or troubleshooting.
+
 ## Commands
 
 ```text
